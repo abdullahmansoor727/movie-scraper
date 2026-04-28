@@ -1,2 +1,0 @@
-/api /api/index.js 200
-/api/(.*) /api/index.js 200

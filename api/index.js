@@ -24,10 +24,10 @@ function bootWasm() {
     await sodium.ready;
     globalThis.sodium = sodium;
 
-    eval(fs.readFileSync(path.join(__dirname, 'script.js'), 'utf8'));
+    eval(fs.readFileSync(path.join(__dirname, '..', 'script.js'), 'utf8'));
 
     const go = new Dm();
-    const wasmBuf = fs.readFileSync(path.join(__dirname, 'fu.wasm'));
+    const wasmBuf = fs.readFileSync(path.join(__dirname, '..', 'fu.wasm'));
     const { instance } = await WebAssembly.instantiate(wasmBuf, go.importObject);
     go.run(instance);
 
@@ -74,65 +74,112 @@ function fetchUpstream(url, redirects = 0) {
   });
 }
 
+function toProxiedUrl(value, playlistUrl) {
+  if (/^(data|blob):/i.test(value)) return value;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(value) && !/^https?:/i.test(value)) return value;
+  return '/api?url=' + encodeURIComponent(new URL(value, playlistUrl).href);
+}
+
 function rewriteM3u8(body, url) {
-  const base = url.split('?')[0];
-  const baseDir = base.substring(0, base.lastIndexOf('/') + 1);
-  const origin = new URL(url).origin;
   return body.split('\n').map(line => {
     const t = line.trim();
-    if (!t || t.startsWith('#')) return line;
-    const abs = t.startsWith('http') ? t : t.startsWith('/') ? origin + t : baseDir + t;
-    return '/api?url=' + encodeURIComponent(abs);
+    if (!t) return line;
+    if (t.startsWith('#')) {
+      return line.replace(/URI="([^"]+)"/g, function(_, uri) {
+        return 'URI="' + toProxiedUrl(uri, url) + '"';
+      });
+    }
+    return toProxiedUrl(t, url);
   }).join('\n');
 }
 
-// ── Vercel serverless handler ─────────────────────────────────────────────────
-module.exports = async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+function streamToBuffer(stream) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    stream.on('data', chunk => chunks.push(chunk));
+    stream.on('end', () => resolve(Buffer.concat(chunks)));
+    stream.on('error', reject);
+  });
+}
 
-  const { searchParams } = new URL(req.url, 'http://localhost');
-  const q = Object.fromEntries(searchParams);
+function getQuery(event) {
+  if (event.queryStringParameters) {
+    return event.queryStringParameters;
+  }
+
+  const rawUrl = event.rawUrl || event.path || '/api';
+  const { searchParams } = new URL(rawUrl, 'http://localhost');
+  return Object.fromEntries(searchParams);
+}
+
+async function handler(event) {
+  const headers = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'Content-Type, Range',
+    'Access-Control-Allow-Methods': 'GET, OPTIONS',
+  };
+
+  if (event.httpMethod === 'OPTIONS') {
+    return { statusCode: 204, headers, body: '' };
+  }
+
+  const q = getQuery(event);
 
   // Proxy mode: /api?url=...
   if (q.url) {
-    const url = decodeURIComponent(q.url);
+    const url = q.url;
     try {
       const upstream = await fetchUpstream(url);
       const ct = (upstream.headers['content-type'] || '').toLowerCase();
       const isM3u8 = ct.includes('mpegurl') || ct.includes('m3u8') || /\.m3u8?(\?|$)/i.test(url.split('?')[0]);
+      const bodyBuffer = await streamToBuffer(upstream);
 
       if (isM3u8) {
-        const chunks = [];
-        for await (const chunk of upstream) chunks.push(chunk);
-        const body = Buffer.concat(chunks).toString('utf8');
-        res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
-        return res.end(rewriteM3u8(body, url));
-      } else {
-        res.setHeader('Content-Type', ct || 'application/octet-stream');
-        if (upstream.headers['content-length']) res.setHeader('Content-Length', upstream.headers['content-length']);
-        res.statusCode = upstream.statusCode;
-        upstream.pipe(res);
+        return {
+          statusCode: 200,
+          headers: { ...headers, 'Content-Type': 'application/vnd.apple.mpegurl' },
+          body: rewriteM3u8(bodyBuffer.toString('utf8'), url),
+        };
       }
+
+      return {
+        statusCode: upstream.statusCode || 200,
+        headers: { ...headers, 'Content-Type': ct || 'application/octet-stream' },
+        body: bodyBuffer.toString('base64'),
+        isBase64Encoded: true,
+      };
     } catch (err) {
-      res.statusCode = 502;
-      res.end(err.message);
+      return {
+        statusCode: 502,
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ error: err.message }),
+      };
     }
-    return;
   }
 
   // Stream lookup: /api?id=550  or  /api?id=456&s=1&e=2
   if (!q.id) {
-    res.statusCode = 400;
-    res.setHeader('Content-Type', 'application/json');
-    return res.end(JSON.stringify({ error: 'missing id' }));
+    return {
+      statusCode: 400,
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ error: 'missing id' }),
+    };
   }
 
-  res.setHeader('Content-Type', 'application/json');
   try {
     const url = await getStream(q.id, q.s, q.e);
-    res.end(JSON.stringify({ url }));
+    return {
+      statusCode: 200,
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url }),
+    };
   } catch (err) {
-    res.statusCode = 500;
-    res.end(JSON.stringify({ error: err.message }));
+    return {
+      statusCode: 500,
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ error: err.message }),
+    };
   }
-};
+}
+
+exports.handler = handler;

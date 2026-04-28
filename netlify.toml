@@ -1,0 +1,20 @@
+[build]
+  publish = "."
+  functions = "api"
+
+[dev]
+  publish = "."
+  functions = "api"
+
+[functions]
+  included_files = ["script.js", "fu.wasm"]
+
+[[redirects]]
+  from = "/api"
+  to = "/.netlify/functions/index"
+  status = 200
+
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/index"
+  status = 200

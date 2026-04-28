@@ -107,7 +107,6 @@ video { width: 100%; height: 100%; display: block; }
 
 <div id="stream-actions" aria-label="Stream actions">
   <button id="copy-hls" class="stream-btn" type="button" title="Copy proxied HLS playlist URL">HLS URL</button>
-  <button id="copy-ffmpeg" class="stream-btn" type="button" title="Copy FFmpeg command">FFmpeg</button>
 </div>
 <div id="copy-status" role="status" aria-live="polite"></div>
 
@@ -131,7 +130,6 @@ var msgTimer = setInterval(function() {
 var p = new URLSearchParams(location.search);
 var id = p.get('id'), s = p.get('s'), e = p.get('e');
 var currentHlsUrl = '';
-var currentFfmpegCommand = '';
 var copyStatusTimer = null;
 
 function showPlayer() {
@@ -169,25 +167,9 @@ function loadBackdrop(id, isTv) {
     .catch(function() {});
 }
 
-function safeNamePart(value, fallback) {
-  return String(value || fallback).replace(/[^a-z0-9_-]/gi, '-');
-}
-
-function outputFileName() {
-  if (s) {
-    return 'tv-' + safeNamePart(id, 'stream') + '-s' + safeNamePart(s, '1') + 'e' + safeNamePart(e, '1') + '.mp4';
-  }
-  return 'movie-' + safeNamePart(id, 'stream') + '.mp4';
-}
-
-function shellQuote(value) {
-  return '"' + String(value).replace(/(["\\$`])/g, '\\$1') + '"';
-}
-
-function setDownloadHelper(rawUrl) {
-  var proxiedPath = '/api?url=' + encodeURIComponent(rawUrl);
+function setHlsHelper(rawUrl) {
+  var proxiedPath = '/api/playlist.m3u8?url=' + encodeURIComponent(rawUrl);
   currentHlsUrl = new URL(proxiedPath, location.href).href;
-  currentFfmpegCommand = 'ffmpeg -i ' + shellQuote(currentHlsUrl) + ' -c copy -bsf:a aac_adtstoasc ' + shellQuote(outputFileName());
 }
 
 function showCopyStatus(message) {
@@ -233,10 +215,6 @@ document.getElementById('copy-hls').addEventListener('click', function() {
   copyText(currentHlsUrl, 'HLS URL copied');
 });
 
-document.getElementById('copy-ffmpeg').addEventListener('click', function() {
-  copyText(currentFfmpegCommand, 'FFmpeg command copied');
-});
-
 if (!id) {
   clearInterval(msgTimer);
   document.getElementById('loader').style.display = 'none';
@@ -248,14 +226,14 @@ if (!id) {
     .then(function(r) { return r.json(); })
     .then(function(d) {
       if (d.error) return showErr(d.error);
-      setDownloadHelper(d.url);
+      setHlsHelper(d.url);
       play(d.url);
     })
     .catch(function(err) { showErr(err.message); });
 }
 
 function play(rawUrl) {
-  var src = '/api?url=' + encodeURIComponent(rawUrl);
+  var src = '/api/playlist.m3u8?url=' + encodeURIComponent(rawUrl);
   var v = document.getElementById('v');
   if (Hls.isSupported()) {
     var hls = new Hls({ enableWorker: true });

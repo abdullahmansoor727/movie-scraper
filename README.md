@@ -11,7 +11,7 @@ A simple movie streaming frontend that pulls video sources using scripts origina
 * 🚫 No ads (cleaned version of original scripts)
 * 🌐 Deployed easily with Netlify
 * 🔗 Simple URL-based playback system
-* ⬇️ Copy an HLS URL or FFmpeg command for permitted downloads
+* 🔎 Copy the proxied HLS playlist URL for debugging
 
 ## 🧠 How It Works
 
@@ -98,13 +98,7 @@ For TV episodes:
 https://your-netlify-site.netlify.app/?id=TV_ID&s=1&e=1
 ```
 
-When a stream is ready, use the `HLS URL` or `FFmpeg` button to copy the playlist URL or a ready-to-run command:
-
-```bash
-ffmpeg -i "HLS_URL" -c copy -bsf:a aac_adtstoasc "movie.mp4"
-```
-
-Only download streams when you have the right to do so.
+When a stream is ready, use the `HLS URL` button to copy the proxied playlist URL.
 
 ## 💡 Future Improvements
 

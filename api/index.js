@@ -74,10 +74,19 @@ function fetchUpstream(url, redirects = 0) {
   });
 }
 
+function proxiedPathForUrl(url) {
+  const pathname = new URL(url).pathname.toLowerCase();
+  if (/\.m3u8?$/.test(pathname)) return '/api/playlist.m3u8';
+  if (/\.(vtt|webvtt)$/.test(pathname)) return '/api/subtitle.vtt';
+  if (/\.(key|bin)$/.test(pathname)) return '/api/key.bin';
+  return '/api/segment.ts';
+}
+
 function toProxiedUrl(value, playlistUrl) {
   if (/^(data|blob):/i.test(value)) return value;
   if (/^[a-z][a-z0-9+.-]*:/i.test(value) && !/^https?:/i.test(value)) return value;
-  return '/api?url=' + encodeURIComponent(new URL(value, playlistUrl).href);
+  const absoluteUrl = new URL(value, playlistUrl).href;
+  return proxiedPathForUrl(absoluteUrl) + '?url=' + encodeURIComponent(absoluteUrl);
 }
 
 function rewriteM3u8(body, url) {

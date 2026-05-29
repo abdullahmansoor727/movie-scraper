@@ -3,9 +3,24 @@
   "version": "1.0.0",
   "scripts": {
     "dev": "netlify dev",
-    "start": "netlify dev"
+    "start": "netlify dev",
+    "typecheck": "tsc -p apps/downloader/tsconfig.json",
+    "download-dev": "nodemon",
+    "download-service": "node --experimental-strip-types apps/downloader/src/main/stack-main.ts",
+    "download-api": "node --experimental-strip-types apps/downloader/src/main/api-main.ts",
+    "download-worker": "node --experimental-strip-types apps/downloader/src/main/worker-main.ts",
+    "download-notifier": "node --experimental-strip-types apps/downloader/src/main/notifier-main.ts",
+    "download-optimizer": "node --experimental-strip-types apps/downloader/src/main/optimizer-main.ts",
+    "download-import-legacy-jobs": "node --experimental-strip-types apps/downloader/src/main/import-legacy-jobs.ts"
   },
   "dependencies": {
+    "@fastify/cors": "^11.2.0",
+    "fastify": "^5.8.5",
     "libsodium-wrappers": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "nodemon": "^3.1.14",
+    "typescript": "^6.0.3"
   }
 }

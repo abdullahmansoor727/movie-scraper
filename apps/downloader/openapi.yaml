@@ -1,0 +1,657 @@
+openapi: 3.0.0
+info:
+  title: Movie Scraper Downloader API
+  version: 1.0.0
+  description: API for managing video downloads and optimization jobs
+  contact:
+    name: Movie Scraper
+servers:
+  - url: http://127.0.0.1:5050
+    description: Default local server
+    variables:
+      port:
+        default: '5050'
+      host:
+        default: '127.0.0.1'
+
+paths:
+  /health:
+    get:
+      summary: Health check
+      tags:
+        - System
+      operationId: getHealth
+      responses:
+        '200':
+          description: System health status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    description: Overall system health
+                  db:
+                    type: boolean
+                    description: Database connectivity status
+                  jobs:
+                    type: boolean
+                    description: Jobs system status
+                  disk:
+                    type: object
+                    properties:
+                      availableBytes:
+                        type: number
+                        description: Available disk space in bytes
+                      minFreeSpaceBytes:
+                        type: number
+                        description: Minimum required free space in bytes
+
+  /metrics:
+    get:
+      summary: System metrics
+      tags:
+        - System
+      operationId: getMetrics
+      responses:
+        '200':
+          description: System metrics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  disk_available_bytes:
+                    type: number
+                  disk_total_bytes:
+                    type: number
+                  disk_min_free_space_bytes:
+                    type: number
+
+  /options:
+    get:
+      summary: Get available stream variants
+      tags:
+        - Streams
+      operationId: getStreamOptions
+      parameters:
+        - name: id
+          in: query
+          required: true
+          schema:
+            type: string
+          description: TMDB ID
+        - name: s
+          in: query
+          schema:
+            type: string
+          description: Season number (for TV shows)
+        - name: e
+          in: query
+          schema:
+            type: string
+          description: Episode number (for TV shows)
+      responses:
+        '200':
+          description: Available stream variants
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  variants:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        url:
+                          type: string
+                          description: Playlist URL
+                        label:
+                          type: string
+                          description: Stream quality label
+        '400':
+          description: Missing required parameters
+
+  /proxy/segment:
+    get:
+      summary: Proxy video segment
+      tags:
+        - Proxy
+      operationId: getSegment
+      parameters:
+        - name: url
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Segment URL to proxy
+      responses:
+        '200':
+          description: Video segment data
+          content:
+            application/octet-stream: {}
+        '400':
+          description: Missing URL parameter
+        '502':
+          description: Failed to fetch segment
+
+  /proxy/playlist.m3u8:
+    get:
+      summary: Proxy HLS playlist
+      tags:
+        - Proxy
+      operationId: getPlaylist
+      parameters:
+        - name: url
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Playlist URL to proxy
+      responses:
+        '200':
+          description: HLS playlist with rewritten URLs
+          content:
+            application/vnd.apple.mpegurl: {}
+        '400':
+          description: Missing URL parameter
+        '502':
+          description: Failed to fetch playlist
+
+  /downloads:
+    post:
+      summary: Create a new download job
+      tags:
+        - Downloads
+      operationId: createDownload
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - id
+              properties:
+                id:
+                  type: string
+                  description: TMDB ID for the media
+                s:
+                  type: string
+                  description: Season number (for TV)
+                e:
+                  type: string
+                  description: Episode number (for TV)
+                title:
+                  type: string
+                  description: Display title
+                year:
+                  type: number
+                  description: Release year
+                episodeTitle:
+                  type: string
+                  description: Episode title (for TV)
+                tmdbId:
+                  type: string
+                  description: TMDB ID
+                season:
+                  type: number
+                  description: Season number
+                episode:
+                  type: number
+                  description: Episode number
+                playlistUrl:
+                  type: string
+                  description: Optional specific playlist URL
+                label:
+                  type: string
+                  description: Optional stream quality label
+      responses:
+        '200':
+          description: File already downloaded and ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DownloadResponse'
+        '202':
+          description: Download job created or queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DownloadResponse'
+        '400':
+          description: Invalid request
+
+    get:
+      summary: List all download jobs
+      tags:
+        - Downloads
+      operationId: listDownloads
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: number
+            default: 50
+          description: Maximum number of jobs to return
+        - name: includeDeleted
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: Include soft-deleted jobs
+      responses:
+        '200':
+          description: List of download jobs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  jobs:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Job'
+
+  /downloads/{id}:
+    get:
+      summary: Get download job details
+      tags:
+        - Downloads
+      operationId: getDownload
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Download job details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  job:
+                    $ref: '#/components/schemas/Job'
+        '404':
+          description: Job not found
+
+  /downloads/{id}/file:
+    get:
+      summary: Download the completed file
+      tags:
+        - Downloads
+      operationId: downloadFile
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Video file
+          content:
+            video/mp4: {}
+            video/mp2t: {}
+        '404':
+          description: Job or file not found
+        '409':
+          description: File not ready yet
+
+  /downloads/{id}/soft-delete:
+    post:
+      summary: Soft delete a download job
+      tags:
+        - Downloads
+      operationId: softDeleteDownload
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                  description: Reason for deletion
+      responses:
+        '200':
+          description: Job soft deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DownloadResponse'
+        '404':
+          description: Job not found
+        '409':
+          description: Job is still active
+
+  /downloads/{id}/pause:
+    post:
+      summary: Pause a download
+      tags:
+        - Download Control
+      operationId: pauseDownload
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Download paused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DownloadResponse'
+        '404':
+          description: Job not found
+
+  /downloads/{id}/resume:
+    post:
+      summary: Resume a paused download
+      tags:
+        - Download Control
+      operationId: resumeDownload
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Download resumed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DownloadResponse'
+        '404':
+          description: Job not found
+
+  /downloads/{id}/cancel:
+    post:
+      summary: Cancel a download
+      tags:
+        - Download Control
+      operationId: cancelDownload
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Download cancelled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DownloadResponse'
+        '404':
+          description: Job not found
+
+  /downloads/{id}/optimize:
+    post:
+      summary: Create an optimization job for a completed download
+      tags:
+        - Optimization
+      operationId: optimizeDownload
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                codec:
+                  type: string
+                  default: libx265
+                  enum: [libx265, libx264, libvp9]
+                  description: Video codec to use
+                crf:
+                  type: number
+                  default: 23
+                  minimum: 0
+                  maximum: 51
+                  description: Constant Rate Factor (lower = better quality, larger file)
+                preset:
+                  type: string
+                  default: slow
+                  enum: [ultrafast, superfast, veryfast, faster, fast, medium, slow, slower, veryslow]
+                  description: Encoding speed/quality preset
+                audioMode:
+                  type: string
+                  default: copy
+                  enum: [copy, aac, opus]
+                  description: Audio codec to use
+                audioBitrate:
+                  type: string
+                  default: 160k
+                  description: Audio bitrate
+      responses:
+        '202':
+          description: Optimization job created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  optimization:
+                    $ref: '#/components/schemas/OptimizationJob'
+        '404':
+          description: Job not found
+        '409':
+          description: Job not complete or has no file
+
+  /optimizations:
+    get:
+      summary: List all optimization jobs
+      tags:
+        - Optimization
+      operationId: listOptimizations
+      responses:
+        '200':
+          description: List of optimization jobs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  optimizations:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/OptimizationJob'
+
+  /cleanup/preview:
+    get:
+      summary: Preview cleanup opportunities
+      tags:
+        - System
+      operationId: previewCleanup
+      responses:
+        '200':
+          description: Cleanup preview
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        type:
+                          type: string
+                          enum: [source_ts, staging_part]
+                        jobId:
+                          type: string
+                        path:
+                          type: string
+                        size:
+                          type: number
+                  reclaimableBytes:
+                    type: number
+
+  /cleanup/apply:
+    post:
+      summary: Apply cleanup to remove temporary files
+      tags:
+        - System
+      operationId: applyCleanup
+      responses:
+        '200':
+          description: Cleanup completed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted:
+                    type: array
+                    items:
+                      type: object
+                  reclaimedBytes:
+                    type: number
+
+components:
+  schemas:
+    Job:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique job ID
+        status:
+          type: string
+          enum:
+            - queued
+            - resolving
+            - running
+            - backing_off
+            - validating
+            - promoting
+            - completed
+            - completed_with_warnings
+            - paused
+            - stalled
+            - failed_terminal
+        title:
+          type: string
+        year:
+          type: number
+        season:
+          type: number
+        episode:
+          type: number
+        episodeTitle:
+          type: string
+        label:
+          type: string
+          description: Stream quality label
+        fileBasename:
+          type: string
+        finalFilePath:
+          type: string
+        sourceFilePath:
+          type: string
+          description: Original TS file (if remuxed to MP4)
+        finalFileKind:
+          type: string
+          enum: [ts, mp4]
+        playlistUrl:
+          type: string
+        totalSegments:
+          type: number
+        completedSegments:
+          type: number
+        currentSegment:
+          type: number
+        bytesWritten:
+          type: number
+        totalBytesEstimate:
+          type: number
+        currentConcurrency:
+          type: number
+        maxConcurrency:
+          type: number
+        createdAt:
+          type: number
+          description: Unix timestamp
+        startedAt:
+          type: number
+          description: Unix timestamp
+        lastProgressAt:
+          type: number
+          description: Unix timestamp
+        warningCount:
+          type: number
+        retryCount:
+          type: number
+        backoffLevel:
+          type: number
+
+    OptimizationJob:
+      type: object
+      properties:
+        id:
+          type: string
+        sourceJobId:
+          type: string
+          description: ID of the download job being optimized
+        sourcePath:
+          type: string
+          description: Path to file being optimized
+        status:
+          type: string
+          enum: [queued, running, completed, failed]
+        codec:
+          type: string
+          description: Video codec used
+        crf:
+          type: number
+          description: Constant Rate Factor
+        preset:
+          type: string
+          description: Encoding preset
+        audioMode:
+          type: string
+          description: Audio codec
+        audioBitrate:
+          type: string
+          description: Audio bitrate
+        progress:
+          type: number
+          description: Progress percentage (0-100)
+        createdAt:
+          type: number
+          description: Unix timestamp
+        startedAt:
+          type: number
+          description: Unix timestamp
+        completedAt:
+          type: number
+          description: Unix timestamp
+
+    DownloadResponse:
+      type: object
+      properties:
+        job:
+          $ref: '#/components/schemas/Job'

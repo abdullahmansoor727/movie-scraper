@@ -52,10 +52,71 @@ video { width: 100%; height: 100%; display: block; }
   white-space: nowrap;
 }
 #copy-status.visible { opacity: 1; }
+#download-panel {
+  position: fixed; right: 12px; bottom: 12px; z-index: 6;
+  display: none; width: min(460px, calc(100vw - 24px)); max-height: min(70vh, 520px);
+  padding: 10px 12px; overflow: auto;
+  border: 1px solid rgba(255,255,255,.18); border-radius: 6px;
+  background: rgba(0,0,0,.82); color: rgba(255,255,255,.9);
+  font-size: .82rem; line-height: 1.45; backdrop-filter: blur(10px);
+}
+#download-panel strong { color: #fff; font-weight: 650; }
+#download-meta {
+  display: none; align-items: center; justify-content: space-between;
+  gap: 10px; margin-top: 8px; color: rgba(255,255,255,.78);
+  font-size: .76rem;
+}
+#download-bar {
+  display: none; width: 100%; height: 8px; margin-top: 8px;
+  border-radius: 999px; overflow: hidden; background: rgba(255,255,255,.12);
+}
+#download-bar-fill {
+  width: 0%; height: 100%; border-radius: 999px;
+  background: linear-gradient(90deg, #60a5fa, #34d399);
+  transition: width .2s ease;
+}
+#download-options { display: grid; gap: 8px; margin-top: 9px; }
+.download-choice {
+  width: 100%; min-height: 38px; padding: 0 10px;
+  border: 1px solid rgba(255,255,255,.22); border-radius: 6px;
+  background: rgba(255,255,255,.08); color: #fff; font: inherit;
+  text-align: left; cursor: pointer;
+}
+.download-choice:hover { background: rgba(255,255,255,.15); }
+#download-log {
+  margin-top: 7px; color: rgba(255,255,255,.66);
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+#server-queue {
+  display: none; margin-top: 10px; border-top: 1px solid rgba(255,255,255,.12);
+  padding-top: 8px;
+}
+.server-job {
+  display: grid; gap: 4px; padding: 8px 0;
+  border-bottom: 1px solid rgba(255,255,255,.08);
+}
+.server-job:last-child { border-bottom: 0; }
+.server-job-title {
+  color: rgba(255,255,255,.92); font-size: .78rem;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.server-job-meta {
+  display: flex; justify-content: space-between; gap: 8px;
+  color: rgba(255,255,255,.62); font-size: .72rem;
+}
+.server-job-bar {
+  height: 5px; border-radius: 999px; overflow: hidden;
+  background: rgba(255,255,255,.12);
+}
+.server-job-fill {
+  height: 100%; width: 0%; border-radius: 999px;
+  background: linear-gradient(90deg, #60a5fa, #34d399);
+}
 @media (max-width: 600px) {
   #stream-actions { left: 12px; right: 12px; }
   .stream-btn { flex: 1; }
   #copy-status { left: 12px; right: 12px; }
+  #download-panel { left: 12px; right: 12px; }
 }
 
 #usage {
@@ -107,8 +168,27 @@ video { width: 100%; height: 100%; display: block; }
 
 <div id="stream-actions" aria-label="Stream actions">
   <button id="copy-hls" class="stream-btn" type="button" title="Copy proxied HLS playlist URL">HLS URL</button>
+  <button id="download-hls" class="stream-btn" type="button" title="Download through Netlify proxy">Download</button>
+  <button id="download-server" class="stream-btn" type="button" title="Download through local backend service">Server
+    Download</button>
+  <button id="server-queue-btn" class="stream-btn" type="button" title="Show local backend download queue">Queue</button>
 </div>
 <div id="copy-status" role="status" aria-live="polite"></div>
+<div id="download-panel" role="status" aria-live="polite">
+  <strong id="download-title">Download</strong>
+  <div id="download-status"></div>
+  <div id="download-meta">
+    <span id="download-percent"></span>
+    <span id="download-size"></span>
+    <span id="download-eta"></span>
+  </div>
+  <div id="download-bar">
+    <div id="download-bar-fill"></div>
+  </div>
+  <div id="download-options"></div>
+  <div id="download-log"></div>
+  <div id="server-queue"></div>
+</div>
 
 <script>
 var TMDB_KEY = '3a73619bbb8fc6d47742d1b5b2b707b5';
@@ -130,7 +210,15 @@ var msgTimer = setInterval(function() {
 var p = new URLSearchParams(location.search);
 var id = p.get('id'), s = p.get('s'), e = p.get('e');
 var currentHlsUrl = '';
+          var currentStreamData = null;
+          var mediaMeta = null;
 var copyStatusTimer = null;
+                var downloadBusy = false;
+                var serverDownloadBusy = false;
+                var serverDownloadPollTimer = null;
+                var currentServerJobId = '';
+                var RESUME_PREFIX = 'movie-scraper-resume:';
+                var DOWNLOAD_SERVICE_BASE = 'http://localhost:5050';
 
 function showPlayer() {
   clearInterval(msgTimer);
@@ -156,6 +244,11 @@ function loadBackdrop(id, isTv) {
   fetch('https://api.themoviedb.org/3/' + type + '/' + id + '?api_key=' + TMDB_KEY)
     .then(function(r) { return r.json(); })
     .then(function(d) {
+      mediaMeta = {
+        title: isTv ? (d.name || d.original_name || ('tv-' + id)) : (d.title || d.original_title || ('movie-' + id)),
+        year: ((isTv ? d.first_air_date : d.release_date) || '').slice(0, 4) || '',
+        episodeTitle: ''
+      };
       var img = d.backdrop_path || d.poster_path;
       if (!img) return;
       var url = 'https://wsrv.nl/?url=' + encodeURIComponent('https://image.tmdb.org/t/p/w1280' + img) + '&bg=black&blur=3';
@@ -163,6 +256,14 @@ function loadBackdrop(id, isTv) {
       var preload = new Image();
       preload.onload = function() { bg.style.backgroundImage = 'url(' + url + ')'; bg.style.opacity = '1'; };
       preload.src = url;
+      if (isTv && s && e) {
+        fetch('https://api.themoviedb.org/3/tv/' + id + '/season/' + s + '/episode/' + (e || '1') + '?api_key=' + TMDB_KEY)
+          .then(function (resp) { return resp.ok ? resp.json() : null; })
+          .then(function (ep) {
+            if (ep && mediaMeta) mediaMeta.episodeTitle = ep.name || '';
+          })
+          .catch(function () { });
+      }
     })
     .catch(function() {});
 }
@@ -170,6 +271,42 @@ function loadBackdrop(id, isTv) {
 function setHlsHelper(rawUrl) {
   var proxiedPath = '/api/playlist.m3u8?url=' + encodeURIComponent(rawUrl);
   currentHlsUrl = new URL(proxiedPath, location.href).href;
+                      document.getElementById('copy-hls').textContent = 'HLS URL';
+                    }
+
+                    function streamLookupUrl() {
+                      return '/api?' + (s ? 'id=' + id + '&s=' + s + '&e=' + (e || '1') : 'id=' + id);
+                    }
+
+                    function isM3u8Url(rawUrl) {
+                      try {
+                        return /\.m3u8(?:$|\?)/i.test(new URL(rawUrl, location.href).pathname);
+                      } catch (err) {
+                        return /\.m3u8(?:$|\?)/i.test(String(rawUrl || ''));
+                      }
+                    }
+
+                    function proxiedSubtitleUrl(rawUrl) {
+                      return '/api/subtitle.vtt?url=' + encodeURIComponent(rawUrl);
+                    }
+
+                    function applySubtitleTracks(tracks) {
+                      var v = document.getElementById('v');
+                      Array.from(v.querySelectorAll('track')).forEach(function (track) {
+                        track.remove();
+                      });
+                      (tracks || []).forEach(function (track, index) {
+                        if (!track || !track.url) return;
+                        var el = document.createElement('track');
+                        el.kind = 'subtitles';
+                        el.label = track.label || track.language || ('Subtitle ' + (index + 1));
+                        el.srclang = (track.language || 'en').slice(0, 2).toLowerCase();
+                        el.src = proxiedSubtitleUrl(track.url);
+                        if (index === 0 || /english|eng/i.test(track.label || track.language || '')) {
+                          el.default = true;
+                        }
+                        v.appendChild(el);
+                      });
 }
 
 function showCopyStatus(message) {
@@ -215,26 +352,1040 @@ document.getElementById('copy-hls').addEventListener('click', function() {
   copyText(currentHlsUrl, 'HLS URL copied');
 });
 
+    function formatDuration(seconds) {
+      if (!isFinite(seconds) || seconds <= 0) return '';
+      var total = Math.round(seconds);
+      var hours = Math.floor(total / 3600);
+      var minutes = Math.floor((total % 3600) / 60);
+      var secs = total % 60;
+      if (hours > 0) return hours + 'h ' + minutes + 'm';
+      if (minutes > 0) return minutes + 'm ' + secs + 's';
+      return secs + 's';
+    }
+
+    function formatSegmentsPerSecond(value) {
+      if (!isFinite(value) || value <= 0) return '';
+      return value.toFixed(value >= 10 ? 1 : 2) + ' seg/s';
+    }
+
+    function formatBytesPerSecond(value) {
+      if (!isFinite(value) || value <= 0) return '';
+      return formatBytes(value) + '/s';
+    }
+
+    function estimateTotalBytes(bytesWritten, completedCount, totalCount) {
+      if (!isFinite(bytesWritten) || bytesWritten <= 0) return 0;
+      if (!isFinite(completedCount) || completedCount <= 0) return 0;
+      if (!isFinite(totalCount) || totalCount <= 0) return 0;
+      return Math.round((bytesWritten / completedCount) * totalCount);
+    }
+
+    function setDownloadProgress(progress) {
+      var meta = document.getElementById('download-meta');
+      var bar = document.getElementById('download-bar');
+      var fill = document.getElementById('download-bar-fill');
+      var percentEl = document.getElementById('download-percent');
+      var sizeEl = document.getElementById('download-size');
+      var etaEl = document.getElementById('download-eta');
+      if (!progress || !progress.total || progress.total <= 0) {
+        meta.style.display = 'none';
+        bar.style.display = 'none';
+        fill.style.width = '0%';
+        percentEl.textContent = '';
+        sizeEl.textContent = '';
+        etaEl.textContent = '';
+        return;
+      }
+      var current = Math.max(0, progress.current || 0);
+      var total = Math.max(1, progress.total || 1);
+      var percent = Math.max(0, Math.min(100, (current / total) * 100));
+      percentEl.textContent = percent.toFixed(1) + '%';
+      if (progress.finalBytes && progress.finalBytes > 0 && current >= total) {
+        sizeEl.textContent = formatBytes(progress.finalBytes) + ' total';
+      } else if (progress.totalBytesEstimate && progress.totalBytesEstimate > 0) {
+        var totalBytesText = '~' + formatBytes(progress.totalBytesEstimate) + ' total';
+        if (progress.bytesWritten && progress.bytesWritten > 0 && current < total) {
+          sizeEl.textContent = formatBytes(progress.bytesWritten) + ' / ' + totalBytesText;
+        } else {
+          sizeEl.textContent = totalBytesText;
+        }
+      } else if (progress.bytesWritten && progress.bytesWritten > 0) {
+        sizeEl.textContent = formatBytes(progress.bytesWritten);
+      } else {
+        sizeEl.textContent = '';
+      }
+      if (progress.etaSeconds && current > 0 && current < total) {
+        etaEl.textContent = (progress.speedText ? progress.speedText + ' | ' : '') + 'ETA ' + formatDuration(progress.etaSeconds);
+      } else if (current >= total) {
+        etaEl.textContent = 'Complete';
+      } else if (progress.speedText) {
+        etaEl.textContent = progress.speedText;
+      } else {
+        etaEl.textContent = '';
+      }
+      meta.style.display = 'flex';
+      bar.style.display = 'block';
+      fill.style.width = percent.toFixed(1) + '%';
+    }
+
+    function estimateEta(startedAt, current, total) {
+      if (!startedAt || !current || !total || current >= total) return 0;
+      var elapsed = (Date.now() - startedAt) / 1000;
+      if (elapsed <= 0) return 0;
+      return (elapsed / current) * (total - current);
+    }
+
+    function setDownloadPanel(title, status, log, progress) {
+      document.getElementById('download-panel').style.display = 'block';
+      document.getElementById('download-title').textContent = title;
+      document.getElementById('download-status').textContent = status || '';
+      document.getElementById('download-log').textContent = log || '';
+      setDownloadProgress(progress);
+    }
+
+    function setDownloadOptions(options) {
+      var box = document.getElementById('download-options');
+      box.innerHTML = '';
+      options.forEach(function (option) {
+        var btn = document.createElement('button');
+        btn.className = 'download-choice';
+        btn.type = 'button';
+        btn.textContent = option.label;
+        btn.addEventListener('click', function () {
+          if (typeof option.onClick === 'function') {
+            option.onClick();
+            return;
+          }
+          downloadMediaPlaylist(option.url, option.label, option.target);
+        });
+        box.appendChild(btn);
+      });
+    }
+
+    function clearDownloadOptions() {
+      document.getElementById('download-options').innerHTML = '';
+    }
+
+    function clearServerDownloadPoll() {
+      if (serverDownloadPollTimer) {
+        clearTimeout(serverDownloadPollTimer);
+        serverDownloadPollTimer = null;
+      }
+    }
+
+    function serverJobProgress(job) {
+      var current = job.completedSegments || 0;
+      var total = job.totalSegments || 0;
+      return total > 0 ? Math.max(0, Math.min(100, (current / total) * 100)) : 0;
+    }
+
+    function renderServerQueue(jobs) {
+      var box = document.getElementById('server-queue');
+      box.innerHTML = '';
+      var visible = (jobs || []).filter(function (job) {
+        return ['queued', 'resolving', 'running', 'backing_off', 'stalled', 'paused', 'validating', 'promoting'].indexOf(job.status) !== -1;
+      });
+      if (!visible.length) {
+        box.style.display = 'none';
+        return;
+      }
+      visible.forEach(function (job) {
+        var percent = serverJobProgress(job);
+        var speed = formatBytesPerSecond(job.bytesPerSecond || 0) || formatSegmentsPerSecond(job.currentSegmentsPerSecond || 0);
+        var eta = job.etaSeconds ? 'ETA ' + formatDuration(job.etaSeconds) : '';
+        var row = document.createElement('div');
+        row.className = 'server-job';
+        row.innerHTML =
+          '<div class="server-job-title"></div>' +
+          '<div class="server-job-meta"><span></span><span></span></div>' +
+          '<div class="server-job-bar"><div class="server-job-fill"></div></div>';
+        row.querySelector('.server-job-title').textContent = job.fileName || [job.title, job.season ? 'S' + String(job.season).padStart(2, '0') : '', job.episode ? 'E' + String(job.episode).padStart(2, '0') : ''].filter(Boolean).join(' ');
+        row.querySelectorAll('.server-job-meta span')[0].textContent = job.status + ' | ' + (job.completedSegments || 0) + '/' + (job.totalSegments || 0) + ' | x' + (job.concurrency || 0);
+        row.querySelectorAll('.server-job-meta span')[1].textContent = [speed, eta].filter(Boolean).join(' | ');
+        row.querySelector('.server-job-fill').style.width = percent.toFixed(1) + '%';
+        box.appendChild(row);
+      });
+      box.style.display = 'block';
+    }
+
+    function refreshServerQueue() {
+      setDownloadPanel('Server Queue', 'Loading...', 'Reading local backend jobs from ' + DOWNLOAD_SERVICE_BASE);
+      fetch(DOWNLOAD_SERVICE_BASE + '/downloads')
+        .then(function (response) {
+          return response.json().then(function (payload) {
+            if (!response.ok) throw new Error(payload && payload.error ? payload.error : 'Failed to read server queue');
+            return payload.jobs || [];
+          });
+        })
+        .then(function (jobs) {
+          renderServerQueue(jobs);
+          var activeCount = jobs.filter(function (job) {
+            return ['queued', 'resolving', 'running', 'backing_off', 'stalled', 'paused', 'validating', 'promoting'].indexOf(job.status) !== -1;
+          }).length;
+          var completedCount = jobs.filter(function (job) {
+            return job.status === 'completed' || job.status === 'completed_with_warnings';
+          }).length;
+          setDownloadPanel('Server Queue', activeCount + ' active', completedCount + ' completed jobs tracked locally');
+          renderServerQueue(jobs);
+        })
+        .catch(function (err) {
+          setDownloadPanel('Server Queue failed', err.message, 'Start the local backend service with `npm run download-service`.');
+        });
+    }
+
+    function resumeStorageKey(url) {
+      return RESUME_PREFIX + url;
+    }
+
+    function loadResumeState(url) {
+      try {
+        var raw = localStorage.getItem(resumeStorageKey(url));
+        return raw ? JSON.parse(raw) : null;
+      } catch (err) {
+        console.warn('[download] failed to read resume state', err);
+        return null;
+      }
+    }
+
+    function saveResumeState(url, state) {
+      try {
+        localStorage.setItem(resumeStorageKey(url), JSON.stringify(state));
+      } catch (err) {
+        console.warn('[download] failed to save resume state', err);
+      }
+    }
+
+    function clearResumeState(url) {
+      try {
+        localStorage.removeItem(resumeStorageKey(url));
+      } catch (err) {
+        console.warn('[download] failed to clear resume state', err);
+      }
+    }
+
+    function describeResumeState(state) {
+      if (!state || !state.completedCount) return '';
+      return 'Resume available: ' + state.completedCount + ' / ' + state.totalItems + ' files, ' + formatBytes(state.bytesWritten || 0);
+    }
+
+    function parseAttributes(value) {
+      var attrs = {};
+      value.replace(/([A-Z0-9-]+)=("[^"]*"|[^,]*)/g, function (_, key, raw) {
+        attrs[key] = raw.charAt(0) === '"' ? raw.slice(1, -1) : raw;
+        return '';
+      });
+      return attrs;
+    }
+
+    function absoluteUrl(value, base) {
+      return new URL(value, base || location.href).href;
+    }
+
+    function parseMasterPlaylist(text, baseUrl) {
+      var lines = text.split(/\r?\n/);
+      var variants = [];
+      for (var i = 0; i < lines.length; i++) {
+        var line = lines[i].trim();
+        if (!line.startsWith('#EXT-X-STREAM-INF:')) continue;
+        var attrs = parseAttributes(line.slice('#EXT-X-STREAM-INF:'.length));
+        var uri = '';
+        while (++i < lines.length) {
+          uri = lines[i].trim();
+          if (uri && !uri.startsWith('#')) break;
+        }
+        if (!uri) continue;
+        var bandwidth = attrs.BANDWIDTH ? Math.round(Number(attrs.BANDWIDTH) / 1000) + ' kbps' : 'unknown bitrate';
+        var resolution = attrs.RESOLUTION || 'auto';
+        variants.push({
+          url: absoluteUrl(uri, baseUrl),
+          label: resolution + ' - ' + bandwidth,
+        });
+      }
+      return variants;
+    }
+
+    function parseMediaPlaylist(text, baseUrl) {
+      var lines = text.split(/\r?\n/);
+      var items = [];
+      var hasMap = false;
+      lines.forEach(function (line) {
+        var trimmed = line.trim();
+        if (!trimmed) return;
+        if (trimmed.startsWith('#EXT-X-MAP:')) {
+          var attrs = parseAttributes(trimmed.slice('#EXT-X-MAP:'.length));
+          if (attrs.URI) {
+            hasMap = true;
+            items.push(absoluteUrl(attrs.URI, baseUrl));
+          }
+          return;
+        }
+        if (!trimmed.startsWith('#')) {
+          items.push(absoluteUrl(trimmed, baseUrl));
+        }
+      });
+      return { items: items, hasMap: hasMap };
+    }
+
+    function slugifyLabel(value) {
+      return String(value || '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .replace(/-+/g, '-');
+    }
+
+    function sanitizeFilenamePart(value) {
+      return String(value || '')
+        .replace(/[<>:"/\\|?*\x00-\x1f]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
+
+    function downloadFilename(hasMap, label) {
+      var base = '';
+      if (mediaMeta && mediaMeta.title) {
+        if (s) {
+          base = [
+            sanitizeFilenamePart(mediaMeta.title),
+            'S' + String(s).padStart(2, '0') + 'E' + String(e || '1').padStart(2, '0'),
+            sanitizeFilenamePart(mediaMeta.episodeTitle || '')
+          ].filter(Boolean).join(' - ');
+        } else {
+          base = [
+            sanitizeFilenamePart(mediaMeta.title),
+            mediaMeta.year ? '(' + mediaMeta.year + ')' : ''
+          ].filter(Boolean).join(' ');
+        }
+      }
+      if (!base) {
+        base = s
+          ? 'tv-' + id + '-s' + s + 'e' + (e || '1')
+          : 'movie-' + id;
+      }
+      var quality = slugifyLabel(label);
+      return (base.replace(/[^a-z0-9 _().-]/gi, '-') + (quality ? '-' + quality : '')) + (hasMap ? '.mp4' : '.ts');
+    }
+
+    function formatBytes(bytes) {
+      if (bytes > 1024 * 1024 * 1024) return (bytes / 1024 / 1024 / 1024).toFixed(2) + ' GB';
+      if (bytes > 1024 * 1024) return (bytes / 1024 / 1024).toFixed(1) + ' MB';
+      if (bytes > 1024) return (bytes / 1024).toFixed(1) + ' KB';
+      return bytes + ' B';
+    }
+
+    function saveBlob(parts, filename, hasMap, bytes) {
+      setDownloadPanel('Download', 'Preparing file...', formatBytes(bytes) + ' buffered in browser memory');
+      var blob = new Blob(parts, { type: hasMap ? 'video/mp4' : 'video/mp2t' });
+      var link = document.createElement('a');
+      var url = URL.createObjectURL(blob);
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(function () { URL.revokeObjectURL(url); }, 15000);
+    }
+
+    function supportsFileStreaming() {
+      return typeof window.showSaveFilePicker === 'function';
+    }
+
+    function filePickerTypes(hasMap) {
+      return [{
+        description: hasMap ? 'MP4 video' : 'Transport stream video',
+        accept: hasMap ? { 'video/mp4': ['.mp4'] } : { 'video/mp2t': ['.ts'] }
+      }];
+    }
+
+    function openFileTarget(filename, hasMap, resumeState) {
+      if (!supportsFileStreaming()) return Promise.resolve(null);
+      var picker = resumeState && typeof window.showOpenFilePicker === 'function'
+        ? window.showOpenFilePicker({
+          multiple: false,
+          excludeAcceptAllOption: false,
+          types: filePickerTypes(hasMap)
+        }).then(function (handles) {
+          return handles && handles[0];
+        })
+        : window.showSaveFilePicker({
+          suggestedName: filename,
+          types: filePickerTypes(hasMap)
+        });
+      return picker.then(function (handle) {
+        console.log('[download] opened file target', handle.name || filename);
+        return Promise.resolve(resumeState ? handle.getFile() : null).then(function (existingFile) {
+          if (resumeState && existingFile && existingFile.size < (resumeState.bytesWritten || 0)) {
+            throw new Error('selected file is smaller than the saved resume point');
+          }
+          if (resumeState && handle.name !== resumeState.filename) {
+            console.warn('[download] resuming with a different file name', handle.name, 'expected', resumeState.filename);
+          }
+          return handle.createWritable({ keepExistingData: !!resumeState });
+        }).then(function (writable) {
+          return {
+            mode: 'file',
+            handle: handle,
+            pending: {},
+            nextWrite: resumeState ? (resumeState.completedCount || 0) : 0,
+            nextOffset: resumeState ? (resumeState.bytesWritten || 0) : 0,
+            closed: false,
+            flushPromise: Promise.resolve(),
+            queue: function (index, buffer) {
+              this.pending[index] = buffer;
+              var self = this;
+              this.flushPromise = this.flushPromise.then(async function () {
+                while (Object.prototype.hasOwnProperty.call(self.pending, self.nextWrite)) {
+                  var chunk = self.pending[self.nextWrite];
+                  delete self.pending[self.nextWrite];
+                  await writable.write({
+                    type: 'write',
+                    position: self.nextOffset,
+                    data: new Uint8Array(chunk)
+                  });
+                  self.nextOffset += chunk.byteLength;
+                  self.nextWrite += 1;
+                }
+              });
+              return this.flushPromise;
+            },
+            finish: function (expectedBytes) {
+              var self = this;
+              console.log('[download] finishing file target', this.handle.name, 'expected bytes', expectedBytes);
+              return this.flushPromise.then(function () {
+                return writable.truncate(expectedBytes);
+              }).then(function () {
+                return writable.close();
+              }).then(function () {
+                self.closed = true;
+                return wait(150);
+              }).then(function () {
+                return handle.getFile();
+              }).then(function (file) {
+                console.log('[download] file target result', handle.name, 'actual bytes', file.size);
+                if (typeof expectedBytes === 'number' && file.size !== expectedBytes) {
+                  console.error('[download] saved file size mismatch', { expectedBytes: expectedBytes, actualBytes: file.size, name: handle.name });
+                  throw new Error('saved file size mismatch: expected ' + expectedBytes + ', got ' + file.size);
+                }
+                return { name: handle.name, size: file.size };
+              });
+            },
+            keepPartial: function () {
+              var self = this;
+              console.warn('[download] preserving partial file', this.handle.name, 'bytes written', this.nextOffset);
+              return this.flushPromise.then(function () {
+                return writable.truncate(self.nextOffset);
+              }).then(function () {
+                if (self.closed) return null;
+                return writable.close();
+              }).then(function () {
+                self.closed = true;
+                return wait(150);
+              }).then(function () {
+                return handle.getFile();
+              }).then(function (file) {
+                console.log('[download] partial file kept', handle.name, 'actual bytes', file.size);
+                return { name: handle.name, size: file.size };
+              });
+            },
+            abort: function () {
+              console.warn('[download] aborting file target', this.handle.name);
+              this.closed = true;
+              if (typeof writable.abort === 'function') return writable.abort();
+              return writable.close();
+            }
+          };
+        });
+      }).catch(function (err) {
+        if (err && err.name === 'AbortError') throw err;
+        return null;
+      });
+    }
+
+    function openGestureFileTarget(resumeState, label) {
+      if (resumeState && resumeState.filename) {
+        return openFileTarget(resumeState.filename, !!resumeState.hasMap, resumeState);
+      }
+      return openFileTarget(downloadFilename(false, label), false);
+    }
+
+    function fetchWithTimeout(url, timeoutMs) {
+      var controller = new AbortController();
+      var timer = setTimeout(function () { controller.abort(); }, timeoutMs);
+      return fetch(url, { signal: controller.signal }).finally(function () {
+        clearTimeout(timer);
+      });
+    }
+
+    function wait(ms) {
+      return new Promise(function (resolve) { setTimeout(resolve, ms); });
+    }
+
+    function isBackoffStatus(status) {
+      return status === 429 || status === 500 || status === 502 || status === 503 || status === 504;
+    }
+
+    function fetchSegment(url, index, total, state, attempt) {
+      var tryNumber = (attempt || 0) + 1;
+      var now = Date.now();
+      if (state.backoffUntil > now) {
+        var delay = state.backoffUntil - now;
+        setDownloadPanel(
+          'Download',
+          'Backing off for ' + Math.ceil(delay / 1000) + 's',
+          'Waiting before segment ' + index + ' (try ' + tryNumber + ')'
+        );
+        return wait(delay).then(function () {
+          return fetchSegment(url, index, total, state, attempt);
+        });
+      }
+
+      setDownloadPanel(
+        'Download',
+        'Downloading ' + index + ' / ' + total,
+        'Fetching segment ' + index + ' (try ' + tryNumber + ')'
+      );
+      return fetchWithTimeout(url, 25000).then(function (response) {
+        if (!response.ok) {
+          var error = new Error('HTTP ' + response.status);
+          error.status = response.status;
+          throw error;
+        }
+        return response.arrayBuffer();
+      }).catch(function (err) {
+        var transient = err.name === 'AbortError' || isBackoffStatus(err.status);
+        if ((attempt || 0) < 5 && transient) {
+          state.backoffLevel = Math.min((state.backoffLevel || 0) + 1, 5);
+          state.successStreak = 0;
+          if (err.status === 429 && state.concurrency > 2) {
+            state.concurrency -= 1;
+            state.note = 'Rate limited, dropped to x' + state.concurrency;
+            console.log('[download] concurrency changed to', state.concurrency, 'after', err.message);
+          }
+          var retryDelay = Math.min(30000, 1500 * Math.pow(2, state.backoffLevel - 1));
+          if (err.status === 429) retryDelay = Math.max(retryDelay, 8000);
+          state.backoffUntil = Math.max(state.backoffUntil || 0, Date.now() + retryDelay);
+          setDownloadPanel(
+            'Download',
+            'Rate limited; backing off',
+            'Segment ' + index + ' got ' + (err.name === 'AbortError' ? 'timeout' : err.message) + '. Retrying in ' + Math.ceil(retryDelay / 1000) + 's at x' + state.concurrency + '.'
+          );
+          return wait(retryDelay).then(function () {
+            return fetchSegment(url, index, total, state, (attempt || 0) + 1);
+          });
+        }
+        throw new Error('segment ' + index + ' failed: ' + (err.name === 'AbortError' ? 'timed out' : err.message));
+      });
+    }
+
+    function downloadSegments(items, hasMap, target, resumeInfo, playlistUrl, label) {
+      var parts = target ? null : new Array(items.length);
+      var startIndex = resumeInfo ? (resumeInfo.completedCount || 0) : 0;
+      var startBytes = resumeInfo ? (resumeInfo.bytesWritten || 0) : 0;
+      var next = startIndex;
+      var done = startIndex;
+      var bytes = startBytes;
+      var state = {
+        backoffUntil: 0,
+        backoffLevel: 0,
+        concurrency: 3,
+        successStreak: 0,
+        startedAt: Date.now(),
+        note: ''
+      };
+
+      if (startIndex >= items.length) {
+        clearResumeState(playlistUrl);
+        if (target) {
+          return target.finish(startBytes).then(function (fileInfo) {
+            setDownloadPanel('Download', 'Ready', 'Saved ' + formatBytes(fileInfo.size) + ' to ' + fileInfo.name);
+          });
+        }
+        setDownloadPanel('Download', 'Ready', 'Nothing left to download');
+        return Promise.resolve();
+      }
+
+      function worker() {
+        if (next >= items.length) return Promise.resolve();
+        var index = next++;
+        return fetchSegment(items[index], index + 1, items.length, state).then(function (buffer) {
+          var queueWrite = target ? target.queue(index, buffer) : Promise.resolve(parts[index] = buffer);
+          done += 1;
+          bytes += buffer.byteLength;
+          state.backoffLevel = Math.max(0, (state.backoffLevel || 0) - 1);
+          state.successStreak += 1;
+          if (state.concurrency < 5 && state.successStreak >= 64) {
+            state.concurrency += 1;
+            state.successStreak = 0;
+            state.note = 'Proxy healthy, stepped up to x' + state.concurrency;
+            console.log('[download] concurrency changed to', state.concurrency, 'after healthy streak');
+          }
+          return queueWrite.then(function () {
+            if (target) {
+              saveResumeState(playlistUrl, {
+                playlistUrl: playlistUrl,
+                label: label,
+                filename: target.handle && target.handle.name ? target.handle.name : downloadFilename(hasMap, label),
+                hasMap: hasMap,
+                totalItems: items.length,
+                completedCount: target.nextWrite,
+                bytesWritten: target.nextOffset,
+                updatedAt: Date.now()
+              });
+            }
+            setDownloadPanel(
+              'Download',
+              'Downloading ' + done + ' / ' + items.length + ' (x' + state.concurrency + ')',
+              (target
+                ? formatBytes(bytes) + ' streamed to file'
+                : formatBytes(bytes) + ' buffered in browser memory') +
+              (state.note ? ' | ' + state.note : ''),
+              {
+                current: done,
+                total: items.length,
+                etaSeconds: estimateEta(state.startedAt, done - startIndex, items.length - startIndex),
+                bytesWritten: bytes,
+                totalBytesEstimate: estimateTotalBytes(bytes, done, items.length)
+              }
+            );
+            if (state.note) state.note = '';
+            return worker();
+          });
+        });
+      }
+
+      var workers = [];
+      for (var i = 0; i < Math.min(state.concurrency, items.length); i++) workers.push(worker());
+      return Promise.all(workers).then(function () {
+        clearResumeState(playlistUrl);
+        if (target) {
+          return target.finish(bytes).then(function (fileInfo) {
+            setDownloadPanel(
+              'Download',
+              'Ready',
+              'Saved ' + formatBytes(fileInfo.size) + ' to ' + fileInfo.name,
+              {
+                current: items.length,
+                total: items.length,
+                etaSeconds: 0,
+                bytesWritten: fileInfo.size,
+                finalBytes: fileInfo.size
+              }
+            );
+          });
+        }
+        saveBlob(parts, downloadFilename(hasMap, label), hasMap, bytes);
+        setDownloadPanel('Download', 'Ready', 'Saved ' + formatBytes(bytes) + ' as ' + downloadFilename(hasMap, label), {
+          current: items.length,
+          total: items.length,
+          etaSeconds: 0,
+          bytesWritten: bytes,
+          finalBytes: bytes
+        });
+      }).catch(function (err) {
+        if (target) {
+          return Promise.resolve(target.keepPartial()).catch(function (closeErr) {
+            console.error('[download] failed to preserve partial file', closeErr);
+            throw err;
+          }).then(function (fileInfo) {
+            err.partialFile = fileInfo;
+            err.resumeState = loadResumeState(playlistUrl);
+            throw err;
+          });
+        }
+        throw err;
+      });
+    }
+
+    function downloadMediaPlaylist(url, label, preparedTarget) {
+      if (downloadBusy) {
+        showCopyStatus('A download is already running in this tab');
+        return;
+      }
+      downloadBusy = true;
+      clearDownloadOptions();
+      setDownloadPanel('Download', 'Loading ' + label, '');
+      fetch(url)
+        .then(function (response) {
+          if (!response.ok) throw new Error('Playlist HTTP ' + response.status);
+          return response.text();
+        })
+        .then(function (text) {
+          var media = parseMediaPlaylist(text, url);
+          if (!media.items.length) throw new Error('No media segments found');
+          var resumeState = loadResumeState(url);
+          if (resumeState && (resumeState.totalItems !== media.items.length || !!resumeState.hasMap !== !!media.hasMap)) {
+            clearResumeState(url);
+            resumeState = null;
+          }
+          return Promise.resolve(preparedTarget).then(function (target) {
+            if (target) return target;
+            return openFileTarget(
+              resumeState && resumeState.filename ? resumeState.filename : downloadFilename(media.hasMap, label),
+              media.hasMap,
+              resumeState
+            );
+          }).then(function (target) {
+            setDownloadPanel(
+              'Download',
+              resumeState && resumeState.completedCount
+                ? 'Resuming ' + label
+                : 'Found ' + media.items.length + ' files',
+              resumeState && resumeState.completedCount
+                ? 'Continuing from ' + resumeState.completedCount + ' / ' + media.items.length + ' files, ' + formatBytes(resumeState.bytesWritten || 0) + (target ? ' already in ' + target.handle.name : '')
+                : (target ? 'Streaming directly to ' + target.handle.name : 'Starting buffered download through /api')
+            );
+            return downloadSegments(media.items, media.hasMap, target, resumeState, url, label);
+          });
+        })
+        .catch(function (err) {
+          if (err && err.name === 'AbortError') {
+            setDownloadPanel('Download cancelled', 'No file selected', 'The browser file picker was closed.');
+            return;
+          }
+          if (err && err.partialFile) {
+            setDownloadPanel(
+              'Download failed',
+              err.message,
+              'Kept partial file ' + err.partialFile.name + ' (' + formatBytes(err.partialFile.size) + ')' +
+              (err.resumeState && err.resumeState.completedCount
+                ? ' | ' + describeResumeState(err.resumeState)
+                : '')
+            );
+            return;
+          }
+          setDownloadPanel('Download failed', err.message, 'The Netlify proxy or upstream may be rate limiting this stream.');
+        })
+        .finally(function () {
+          downloadBusy = false;
+        });
+    }
+
+    function startDownloadFlow() {
+      if (!currentHlsUrl) return showCopyStatus('Stream is not ready');
+      if (downloadBusy || serverDownloadBusy) return showCopyStatus('Another download is already running');
+      clearDownloadOptions();
+      setDownloadPanel('Download', 'Reading stream playlist...', '');
+      fetch(currentHlsUrl)
+        .then(function (response) {
+          if (!response.ok) throw new Error('Playlist HTTP ' + response.status);
+          return response.text();
+        })
+        .then(function (text) {
+          var variants = parseMasterPlaylist(text, currentHlsUrl);
+          if (variants.length > 1) {
+            setDownloadPanel('Choose stream', 'Select a quality to download through the proxy', '');
+            setDownloadOptions(variants.map(function (variant) {
+              var variantResume = loadResumeState(variant.url);
+              return {
+                url: variant.url,
+                label: variant.label + (variantResume && variantResume.completedCount ? ' (resume)' : ''),
+                onClick: function () {
+                  openGestureFileTarget(variantResume, variant.label).then(function (preparedTarget) {
+                    return downloadMediaPlaylist(variant.url, variant.label, preparedTarget);
+                  }).catch(function (err) {
+                    if (err && err.name === 'AbortError') {
+                      setDownloadPanel('Download cancelled', 'No file selected', 'The browser file picker was closed.');
+                      return;
+                    }
+                    downloadMediaPlaylist(variant.url, variant.label, null);
+                  });
+                }
+              };
+            }));
+            document.getElementById('download-log').textContent = variants
+              .map(function (variant) {
+                var variantResume = loadResumeState(variant.url);
+                return variantResume && variantResume.completedCount
+                  ? variant.label + ': ' + describeResumeState(variantResume)
+                  : '';
+              })
+              .filter(Boolean)
+              .join(' | ');
+            return;
+          }
+          var rootResumeState = loadResumeState(variants.length === 1 ? variants[0].url : currentHlsUrl);
+          var preparedTargetPromise = openGestureFileTarget(rootResumeState, variants.length === 1 ? variants[0].label : 'default-stream').catch(function (err) {
+            if (err && err.name === 'AbortError') throw err;
+            return null;
+          });
+          if (variants.length === 1) {
+            return preparedTargetPromise.then(function (preparedTarget) {
+              return downloadMediaPlaylist(variants[0].url, variants[0].label, preparedTarget);
+            });
+          }
+          return preparedTargetPromise.then(function (preparedTarget) {
+            return downloadMediaPlaylist(currentHlsUrl, 'default stream', preparedTarget);
+          });
+        })
+        .catch(function (err) {
+          if (err && err.name === 'AbortError') {
+            setDownloadPanel('Download cancelled', 'No file selected', 'The browser file picker was closed.');
+            return;
+          }
+          setDownloadPanel('Download failed', err.message, '');
+        });
+    }
+
+    document.getElementById('download-hls').addEventListener('click', startDownloadFlow);
+
+    function startServerDownloadJob(selection) {
+      serverDownloadBusy = true;
+      clearServerDownloadPoll();
+      clearDownloadOptions();
+      setDownloadPanel('Server Download', 'Queueing ' + selection.label, 'Creating backend job on ' + DOWNLOAD_SERVICE_BASE + ' | Safe to leave this page open or come back later');
+      fetch(DOWNLOAD_SERVICE_BASE + '/downloads', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: id,
+          s: s,
+          e: e,
+          playlistUrl: selection.url,
+          subtitles: currentStreamData && currentStreamData.subtitles ? currentStreamData.subtitles : [],
+          label: selection.label,
+          title: mediaMeta && mediaMeta.title ? mediaMeta.title : '',
+          year: mediaMeta && mediaMeta.year ? mediaMeta.year : '',
+          episodeTitle: mediaMeta && mediaMeta.episodeTitle ? mediaMeta.episodeTitle : ''
+        })
+      }).then(function (response) {
+        return response.json().then(function (payload) {
+          if (!response.ok) throw new Error(payload && payload.error ? payload.error : 'Backend download request failed');
+          return payload;
+        });
+      }).then(function (payload) {
+        currentServerJobId = payload.job.id;
+        setDownloadPanel('Server Download', 'Queued', 'Backend job ' + payload.job.id.slice(0, 8) + ' is running on ' + DOWNLOAD_SERVICE_BASE + ' | This file will be available once complete');
+        pollServerDownloadJob(payload.job.id);
+      }).catch(function (err) {
+        serverDownloadBusy = false;
+        currentServerJobId = '';
+        setDownloadPanel('Server Download failed', err.message, 'Make sure the local download service is running.');
+      });
+    }
+
+    function pollServerDownloadJob(jobId) {
+      fetch(DOWNLOAD_SERVICE_BASE + '/downloads/' + encodeURIComponent(jobId))
+        .then(function (response) {
+          return response.json().then(function (payload) {
+            if (!response.ok) throw new Error(payload && payload.error ? payload.error : 'Failed to read backend job');
+            return payload.job;
+          });
+        })
+        .then(function (job) {
+          var bestInsight = (job.concurrencyInsights || []).slice().sort(function (a, b) {
+            return (b.segmentsPerSecond || 0) - (a.segmentsPerSecond || 0);
+          })[0];
+          var sizeSummary = '';
+          if (job.totalBytesEstimate && job.totalBytesEstimate > 0) {
+            sizeSummary = formatBytes(job.bytesWritten || 0) + ' / ~' + formatBytes(job.totalBytesEstimate) + ' total';
+          } else if (job.bytesWritten) {
+            sizeSummary = formatBytes(job.bytesWritten || 0) + ' written';
+          }
+          var detail = (job.fileName ? job.fileName + ' | ' : '') +
+            job.completedSegments + ' / ' + job.totalSegments + ' files | ' +
+            (sizeSummary || (formatBytes(job.bytesWritten || 0) + ' written')) + ' | x' + (job.concurrency || 0);
+          if (job.currentSegmentsPerSecond) {
+            detail += ' | ' + formatSegmentsPerSecond(job.currentSegmentsPerSecond);
+          }
+          if (job.bytesPerSecond) {
+            detail += ' | ' + formatBytesPerSecond(job.bytesPerSecond);
+          }
+          if (bestInsight && bestInsight.segmentsPerSecond) {
+            detail += ' | best x' + bestInsight.concurrency + ' ' + formatSegmentsPerSecond(bestInsight.segmentsPerSecond);
+          }
+          if (job.note) detail += ' | ' + job.note;
+          if (job.status === 'completed' || job.status === 'completed_with_warnings') {
+            serverDownloadBusy = false;
+            clearServerDownloadPoll();
+            currentServerJobId = '';
+            setDownloadPanel(
+              job.status === 'completed_with_warnings' ? 'Server Download' : 'Server Download',
+              job.status === 'completed_with_warnings' ? 'Ready with warnings' : 'Ready',
+              detail + ' | saved to ' + (job.filePath || ('downloads/' + job.fileName)),
+              {
+                current: job.totalSegments || job.completedSegments || 0,
+                total: job.totalSegments || job.completedSegments || 0,
+                etaSeconds: 0,
+                bytesWritten: job.bytesWritten || 0,
+                totalBytesEstimate: job.totalBytesEstimate || job.bytesWritten || 0,
+                finalBytes: job.bytesWritten || 0,
+                speedText: formatBytesPerSecond(job.bytesPerSecond || 0)
+              }
+            );
+            setDownloadOptions([{
+              label: 'Fetch completed file',
+              onClick: function () {
+                window.location.href = DOWNLOAD_SERVICE_BASE + '/downloads/' + encodeURIComponent(job.id) + '/file';
+              }
+            }]);
+            return;
+          }
+          if (job.status === 'failed' || job.status === 'failed_terminal') {
+            serverDownloadBusy = false;
+            clearServerDownloadPoll();
+            currentServerJobId = '';
+            setDownloadPanel('Server Download failed', job.error || 'Job failed', detail, {
+              current: job.completedSegments || 0,
+              total: job.totalSegments || 0,
+              etaSeconds: 0,
+              bytesWritten: job.bytesWritten || 0,
+              totalBytesEstimate: job.totalBytesEstimate || 0,
+              speedText: formatBytesPerSecond(job.bytesPerSecond || 0)
+            });
+            return;
+          }
+          if (job.status === 'queued') {
+            setDownloadPanel('Server Download', 'Queued', detail + ' | Waiting for a scheduler slot', {
+              current: job.completedSegments || 0,
+              total: job.totalSegments || 0,
+              etaSeconds: 0,
+              bytesWritten: job.bytesWritten || 0,
+              totalBytesEstimate: job.totalBytesEstimate || 0,
+              speedText: formatBytesPerSecond(job.bytesPerSecond || 0)
+            });
+            clearServerDownloadPoll();
+            serverDownloadPollTimer = setTimeout(function () {
+              pollServerDownloadJob(jobId);
+            }, 2000);
+            return;
+          }
+          if (job.status === 'paused') {
+            setDownloadPanel('Server Download', 'Paused', detail + ' | Scheduler will resume this when a slot opens', {
+              current: job.completedSegments || 0,
+              total: job.totalSegments || 0,
+              etaSeconds: 0,
+              bytesWritten: job.bytesWritten || 0,
+              totalBytesEstimate: job.totalBytesEstimate || 0,
+              speedText: formatBytesPerSecond(job.bytesPerSecond || 0)
+            });
+            clearServerDownloadPoll();
+            serverDownloadPollTimer = setTimeout(function () {
+              pollServerDownloadJob(jobId);
+            }, 2000);
+            return;
+          }
+          if (job.status === 'stalled') {
+            setDownloadPanel('Server Download', 'Stalled, recovering', detail + ' | The worker will retry from the last checkpoint', {
+              current: job.completedSegments || 0,
+              total: job.totalSegments || 0,
+              etaSeconds: 0,
+              bytesWritten: job.bytesWritten || 0,
+              totalBytesEstimate: job.totalBytesEstimate || 0,
+              speedText: formatBytesPerSecond(job.bytesPerSecond || 0)
+            });
+            clearServerDownloadPoll();
+            serverDownloadPollTimer = setTimeout(function () {
+              pollServerDownloadJob(jobId);
+            }, 2000);
+            return;
+          }
+          setDownloadPanel(
+            'Server Download',
+            job.status === 'backing_off'
+              ? 'Backing off'
+              : (job.status === 'resolving'
+                ? 'Resolving stream'
+                : (job.status === 'validating'
+                  ? 'Validating file'
+                  : (job.status === 'promoting'
+                    ? 'Promoting file'
+                    : 'Downloading ' + job.completedSegments + ' / ' + job.totalSegments))),
+            detail + (job.error ? ' | ' + job.error : '') + ' | Safe to leave this page; the backend download will keep running',
+            {
+              current: job.completedSegments || 0,
+              total: job.totalSegments || 0,
+              etaSeconds: job.etaSeconds || estimateEta(job.startedAt || job.createdAt, job.completedSegments || 0, job.totalSegments || 0),
+              bytesWritten: job.bytesWritten || 0,
+              totalBytesEstimate: job.totalBytesEstimate || 0,
+              speedText: formatBytesPerSecond(job.bytesPerSecond || 0)
+            }
+          );
+          clearServerDownloadPoll();
+          serverDownloadPollTimer = setTimeout(function () {
+            pollServerDownloadJob(jobId);
+          }, 2000);
+        })
+        .catch(function (err) {
+          serverDownloadBusy = false;
+          clearServerDownloadPoll();
+          currentServerJobId = '';
+          setDownloadPanel('Server Download failed', err.message, 'Make sure the local download service is running.');
+        });
+    }
+
+    function startServerDownloadFlow() {
+      if (!id) return showCopyStatus('Nothing to download');
+      if (downloadBusy || serverDownloadBusy) return showCopyStatus('Another download is already running');
+      clearDownloadOptions();
+      setDownloadPanel('Server Download', 'Resolving stream...', 'Contacting local backend service on ' + DOWNLOAD_SERVICE_BASE);
+      fetch(DOWNLOAD_SERVICE_BASE + '/options?id=' + encodeURIComponent(id) + (s ? '&s=' + encodeURIComponent(s) : '') + (e ? '&e=' + encodeURIComponent(e) : ''))
+        .then(function (response) {
+          return response.json().then(function (payload) {
+            if (!response.ok) throw new Error(payload && payload.error ? payload.error : 'Backend options request failed');
+            return payload;
+          });
+        })
+        .then(function (payload) {
+          if (!payload.variants || !payload.variants.length) throw new Error('No downloadable variants found');
+          if (payload.variants.length === 1) {
+            startServerDownloadJob(payload.variants[0]);
+            return;
+          }
+          setDownloadPanel('Server Download', 'Choose stream', 'Backend will download and save the selected variant locally.');
+          setDownloadOptions(payload.variants.map(function (variant) {
+            return {
+              label: variant.label,
+              onClick: function () { startServerDownloadJob(variant); }
+            };
+          }));
+        })
+        .catch(function (err) {
+          setDownloadPanel('Server Download failed', err.message, 'Start the local backend service with `npm run download-service`.');
+        });
+    }
+
+    document.getElementById('download-server').addEventListener('click', startServerDownloadFlow);
+    document.getElementById('server-queue-btn').addEventListener('click', refreshServerQueue);
+
+    window.addEventListener('beforeunload', function (event) {
+      if (downloadBusy) {
+        event.preventDefault();
+        event.returnValue = '';
+      }
+    });
+
 if (!id) {
   clearInterval(msgTimer);
   document.getElementById('loader').style.display = 'none';
   document.getElementById('usage').style.display = 'flex';
 } else {
   loadBackdrop(id, !!s);
-  var api = '/api?' + (s ? 'id='+id+'&s='+s+'&e='+(e||'1') : 'id='+id);
-  fetch(api)
+  fetch(streamLookupUrl())
     .then(function(r) { return r.json(); })
     .then(function(d) {
       if (d.error) return showErr(d.error);
+      currentStreamData = d;
+      if (d.meta) {
+        mediaMeta = {
+          title: d.meta.title || (mediaMeta && mediaMeta.title) || '',
+          year: d.meta.year || (mediaMeta && mediaMeta.year) || '',
+          episodeTitle: d.meta.episodeTitle || (mediaMeta && mediaMeta.episodeTitle) || ''
+        };
+      }
       setHlsHelper(d.url);
-      play(d.url);
+      play(d.url, d.subtitles || []);
     })
     .catch(function(err) { showErr(err.message); });
 }
 
-function play(rawUrl) {
+          function play(rawUrl, subtitles) {
+            if (!isM3u8Url(rawUrl)) {
+              showErr('Unsupported stream type');
+              return;
+            }
   var src = '/api/playlist.m3u8?url=' + encodeURIComponent(rawUrl);
   var v = document.getElementById('v');
+          applySubtitleTracks(subtitles || []);
   if (Hls.isSupported()) {
     var hls = new Hls({ enableWorker: true });
     hls.loadSource(src);

@@ -12,6 +12,7 @@ const UA =
 const HTTP_AGENT = new http.Agent({ keepAlive: true, maxSockets: 16 });
 const HTTPS_AGENT = new https.Agent({ keepAlive: true, maxSockets: 16 });
 const TMDB_KEY = "3a73619bbb8fc6d47742d1b5b2b707b5";
+const FILE_RANGE_CHUNK_SIZE = 2 * 1024 * 1024;
 
 // ── WASM singleton (survives warm invocations) ────────────────────────────────
 let wasmReady = false;
@@ -131,7 +132,6 @@ async function fetchTmdbMeta(id, season, episode) {
     episodeTitle,
   };
 }
-
 function asRecord(value) {
   return value && typeof value === "object" ? value : null;
 }
@@ -216,12 +216,16 @@ function normalizeQualities(qualities) {
   return Object.entries(rec).map(([key, value]) => ({ key, value }));
 }
 
-function isPlaylistUrl(value) {
+function getStreamType(url) {
+  if (!url || typeof url !== "string") return null;
   try {
-    return /\.m3u8(?:$|\?)/i.test(new URL(value).pathname);
-  } catch (_) {
-    return false;
-  }
+    const pathname = new URL(url).pathname;
+    if (/\.m3u8(?:$|\?)/i.test(pathname)) return "hls";
+    if (/\.(mp4|mkv|webm|mov)(?:$|\?)/i.test(pathname)) return "file";
+  } catch (_) {}
+  if (/\.m3u8/i.test(url)) return "hls";
+  if (/\.(mp4|mkv|webm|mov)/i.test(url)) return "file";
+  return null;
 }
 
 function pickFromStream(stream) {
@@ -245,12 +249,85 @@ function extractStreamData(data) {
   if (!root) return null;
   const dataNode = asRecord(root.data);
   const streamNode = (dataNode && dataNode.stream) || root.stream;
-  const url =
+  if (!streamNode) return null;
+
+  let primaryUrl =
     pickFromStream(streamNode) ||
     deepFindUrl(dataNode, 4) ||
     deepFindUrl(root, 4);
-  if (!url || !isPlaylistUrl(url)) return null;
-  return { url, variants: [] };
+
+  const variants = [];
+  if (streamNode.qualities) {
+    const normalized = normalizeQualities(streamNode.qualities);
+    normalized.forEach((entry) => {
+      const entryUrl = deepFindUrl(entry.value, 4);
+      if (entryUrl) {
+        const label = qualityLabel(entry);
+        const height = qualityRank(label) || qualityRank(entry.key);
+        variants.push({
+          label: label,
+          height: height || 0,
+          url: entryUrl,
+        });
+      }
+    });
+    variants.sort((a, b) => b.height - a.height);
+  }
+
+  if (!primaryUrl && variants.length > 0) {
+    primaryUrl = variants[0].url;
+  }
+
+  const finalType = getStreamType(primaryUrl);
+  if (!primaryUrl || !finalType) return null;
+
+  return {
+    url: primaryUrl,
+    type: finalType,
+    variants: variants,
+  };
+}
+
+function toPlaybackUrl(sourceUrl) {
+  return toProxiedUrl(sourceUrl, sourceUrl);
+}
+
+function normalizePlaybackVariant(variant) {
+  if (!variant || !variant.url) return null;
+  const type = getStreamType(variant.url);
+  if (!type) return null;
+  return {
+    label: variant.label,
+    height: Number(variant.height) || 0,
+    type,
+    url: toPlaybackUrl(variant.url),
+    sourceUrl: variant.url,
+  };
+}
+
+function normalizePlaybackStream(stream) {
+  const type = stream.type || getStreamType(stream.url);
+  if (!type || !stream.url) return null;
+
+  let sourceUrl = stream.url;
+  let variants = (stream.variants || [])
+    .map(normalizePlaybackVariant)
+    .filter((variant) => variant && variant.type === type)
+    .filter((variant, index, all) => {
+      return all.findIndex((item) => item.sourceUrl === variant.sourceUrl) === index;
+    })
+    .sort((a, b) => (b.height || 0) - (a.height || 0));
+
+  if (type === "file" && variants.length) {
+    sourceUrl = variants[0].sourceUrl;
+  }
+
+  return {
+    type,
+    url: toPlaybackUrl(sourceUrl),
+    sourceUrl,
+    variants,
+  };
 }
 
 async function getStreamData(id, season, episode) {
@@ -267,23 +344,27 @@ async function getStreamData(id, season, episode) {
   });
   if (!res.ok) throw new Error(`vidlink API returned ${res.status}`);
   const data = await res.json();
-  const playlist = data?.stream?.playlist;
-  if (!playlist) throw new Error("No playlist in response");
-  debugger;
+
+  const stream = extractStreamData(data);
+  if (!stream || !stream.url) throw new Error("No stream in response");
+  const playback = normalizePlaybackStream(stream);
+  if (!playback || !playback.url) throw new Error("No playable stream in response");
+
+  const subtitles =
+    typeof collectSubtitleTracks === "function"
+      ? collectSubtitleTracks(data)
+      : [];
+  const meta = await fetchTmdbMeta(id, season, episode).catch(() => null);
+
   return {
-    url: playlist,
-    tracks: collectSubtitleTracks(data),
-    previewThumbnails: collectPreviewThumbnails(data, playlist),
-    // console.log("vidlink API response", { id, season, episode, data });
-    // const stream = extractStreamData(data);
-    // if (!stream || !stream.url) throw new Error("No stream in response");
-    // const subtitles = extractSubtitleTracks(data, stream.url);
-    // const meta = await fetchTmdbMeta(id, season, episode).catch(() => null);
-    // return {
-    //   url: stream.url,
-    //   variants: stream.variants || [],
-    //   subtitles,
-    //   meta: meta || null,
+    url: playback.url,
+    sourceUrl: playback.sourceUrl,
+    type: playback.type,
+    variants: playback.variants || [],
+    tracks: subtitles,
+    subtitles: subtitles,
+    previewThumbnails: collectPreviewThumbnails(data, playback.sourceUrl),
+    meta: meta || null,
   };
 }
 
@@ -304,20 +385,28 @@ function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function fetchUpstream(url, redirects = 0) {
+function fetchUpstream(url, redirects = 0, extraHeaders = {}) {
   return new Promise((resolve, reject) => {
     if (redirects > 5) return reject(new Error("too many redirects"));
     const isHttps = url.startsWith("https");
+    const upstreamHeaders = {
+      Referer: REFERER,
+      Origin: ORIGIN,
+      "User-Agent": UA,
+      Accept: "*/*",
+    };
+    Object.entries(extraHeaders).forEach(([name, value]) => {
+      if (value === null || typeof value === "undefined") {
+        delete upstreamHeaders[name];
+      } else {
+        upstreamHeaders[name] = value;
+      }
+    });
     const request = (isHttps ? https : http).get(
       url,
       {
         agent: isHttps ? HTTPS_AGENT : HTTP_AGENT,
-        headers: {
-          Referer: REFERER,
-          Origin: ORIGIN,
-          "User-Agent": UA,
-          Accept: "*/*",
-        },
+        headers: upstreamHeaders,
       },
       (res) => {
         if (
@@ -330,6 +419,7 @@ function fetchUpstream(url, redirects = 0) {
             fetchUpstream(
               loc.startsWith("http") ? loc : new URL(loc, url).href,
               redirects + 1,
+              extraHeaders,
             ),
           );
         }
@@ -341,6 +431,51 @@ function fetchUpstream(url, redirects = 0) {
     });
     request.on("error", reject);
   });
+}
+
+function upstreamRequestHeaders(url, eventHeaders) {
+  const rangeHeader = normalizedRangeHeader(
+    eventHeaders.range || eventHeaders.Range,
+    getStreamType(url) === "file",
+  );
+  const headers = rangeHeader ? { Range: rangeHeader } : {};
+  if (getStreamType(url) === "file") {
+    headers.Referer = REFERER;
+    headers.Origin = null;
+  }
+  return headers;
+}
+
+function normalizedRangeHeader(rangeHeader, shouldClamp) {
+  if (!rangeHeader || !shouldClamp) return rangeHeader;
+  const match = String(rangeHeader).match(/^bytes=(\d+)-(\d*)$/i);
+  if (!match) return rangeHeader;
+
+  const start = Number(match[1]);
+  if (!Number.isSafeInteger(start) || start < 0) return rangeHeader;
+
+  const requestedEnd = match[2] ? Number(match[2]) : start + FILE_RANGE_CHUNK_SIZE - 1;
+  if (!Number.isSafeInteger(requestedEnd) || requestedEnd < start) return rangeHeader;
+
+  const end = Math.min(requestedEnd, start + FILE_RANGE_CHUNK_SIZE - 1);
+  return `bytes=${start}-${end}`;
+}
+
+function passthroughProxyHeaders(upstream) {
+  const headers = {};
+  [
+    "accept-ranges",
+    "cache-control",
+    "content-length",
+    "content-range",
+    "etag",
+    "last-modified",
+  ].forEach((name) => {
+    if (upstream.headers[name]) {
+      headers[name] = upstream.headers[name];
+    }
+  });
+  return headers;
 }
 
 async function fetchUpstreamWithRetry(url, attempt = 0) {
@@ -441,7 +576,6 @@ function rewriteVttUrls(body, url) {
 }
 
 function trackFieldsFrom(value) {
-  debugger;
   if (!value) return [];
   if (Array.isArray(value)) return value;
   if (typeof value === "object") {
@@ -797,7 +931,6 @@ function normalizeLanguage(value) {
 }
 
 function normalizeSubtitleTrack(value, index) {
-  debugger;
   const track = typeof value === "string" ? { url: value } : value;
   if (!track || typeof track !== "object") return null;
   if (!isSubtitleTrackLike(track)) return null;
@@ -857,7 +990,6 @@ function normalizePreviewThumbnail(value, index, trustedField, baseUrl) {
 }
 
 function collectSubtitleTracks(data) {
-  debugger;
   const candidates = [
     data?.captions,
     data?.subtitles,
@@ -943,7 +1075,6 @@ function getQuery(event) {
 }
 
 async function handler(event) {
-  // debugger;
   const headers = {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Headers": "Content-Type, Range",
@@ -959,15 +1090,16 @@ async function handler(event) {
   // Proxy mode: /api?url=...
   if (q.url) {
     const url = q.url;
-    console.log("Proxying URL", url);
     try {
       const requestPath = String(
         event.path || event.rawUrl || "",
       ).toLowerCase();
       const isPreviewVtt =
         requestPath.includes("/api/preview.vtt") || q.preview === "1";
-      const upstream = await fetchUpstream(url);
+      const eventHeaders = event.headers || {};
+      const upstream = await fetchUpstream(url, 0, upstreamRequestHeaders(url, eventHeaders));
       const ct = (upstream.headers["content-type"] || "").toLowerCase();
+      const proxyHeaders = passthroughProxyHeaders(upstream);
       const cleanPath = url.split("?")[0];
       const isM3u8 =
         ct.includes("mpegurl") ||
@@ -1012,6 +1144,7 @@ async function handler(event) {
         statusCode: upstream.statusCode || 200,
         headers: {
           ...headers,
+          ...proxyHeaders,
           "Content-Type": ct || "application/octet-stream",
         },
         body: bodyBuffer.toString("base64"),
@@ -1036,7 +1169,7 @@ async function handler(event) {
   }
 
   try {
-    const stream = await getStream(q.id, q.s, q.e);
+    const stream = await getStreamData(q.id, q.s, q.e);
     return {
       statusCode: 200,
       headers: { ...headers, "Content-Type": "application/json" },

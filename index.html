@@ -360,7 +360,7 @@
   </div>
 
   <div id="stream-actions" aria-label="Stream actions">
-    <button id="copy-hls" class="stream-btn" type="button" title="Copy proxied HLS playlist URL">HLS URL</button>
+    <button id="copy-hls" class="stream-btn" type="button" title="Copy proxied stream URL">Stream URL</button>
   </div>
   <div id="copy-status" role="status" aria-live="polite"></div>
 
@@ -383,14 +383,18 @@
 
     var p = new URLSearchParams(location.search);
     var id = p.get('id'), s = p.get('s'), e = p.get('e');
-    var currentHlsUrl = '';
+    var currentStreamUrl = '';
+    var currentStreamType = '';
     var copyStatusTimer = null;
     var hls = null;
     var plyr = null;
     var videoEl = document.getElementById('v');
     var hlsQualityByHeight = {};
+    var fileQualityByHeight = {};
+    var currentFileQuality = null;
     var subtitleSyncTimers = [];
     var previewThumbnails = [];
+    var mediaMeta = null;
 
     function setPlayerRendering(active) {
       document.documentElement.toggleAttribute('data-player-rendering', !!active);
@@ -399,6 +403,10 @@
 
     function setQuality(value) {
       var height = Number(value);
+      if (currentStreamType === 'file') {
+        setFileQuality(height);
+        return;
+      }
       if (!hls) return;
       if (height === 0) {
         hls.currentLevel = -1;
@@ -425,6 +433,56 @@
       return Object.keys(hlsQualityByHeight).map(Number).sort(function (a, b) {
         return b - a;
       });
+    }
+
+    function getVariantHeight(variant, index) {
+      var height = Number(variant && variant.height);
+      if (height) return height;
+      var label = String((variant && variant.label) || '');
+      var match = label.match(/(\d{3,4})/);
+      return match ? Number(match[1]) : 0;
+    }
+
+    function filePlaybackUrl(item) {
+      return (item && item.url) || '';
+    }
+
+    function getFileQualityOptions(variants) {
+      fileQualityByHeight = {};
+      (variants || []).forEach(function (variant, index) {
+        if (!filePlaybackUrl(variant)) return;
+        var height = getVariantHeight(variant, index);
+        if (!height) return;
+        if (!fileQualityByHeight[height]) {
+          fileQualityByHeight[height] = variant;
+        }
+      });
+      return Object.keys(fileQualityByHeight).map(Number).sort(function (a, b) {
+        return b - a;
+      });
+    }
+
+    function setFileQuality(value) {
+      var height = Number(value);
+      var variant = fileQualityByHeight[height];
+      var src = filePlaybackUrl(variant);
+      if (!src || !videoEl || currentFileQuality === height) return;
+
+      var resumeAt = videoEl.currentTime || 0;
+      var shouldPlay = !videoEl.paused && !videoEl.ended;
+      currentFileQuality = height;
+      videoEl.src = src;
+      videoEl.load();
+      videoEl.addEventListener('loadedmetadata', function restoreFilePosition() {
+        if (resumeAt && Number.isFinite(resumeAt)) {
+          try {
+            videoEl.currentTime = resumeAt;
+          } catch (err) { }
+        }
+        if (shouldPlay) {
+          playVideo();
+        }
+      }, { once: true });
     }
 
     function textTracksArray() {
@@ -489,8 +547,6 @@
     }
 
     function scheduleSubtitleSync() {
-      debugger;
-      console.log('Scheduling subtitle sync');
       clearSubtitleSyncTimers();
       [0, 80, 250].forEach(function (delay) {
         subtitleSyncTimers.push(setTimeout(syncActiveSubtitleTrack, delay));
@@ -520,10 +576,15 @@
       }
     }
 
-    function initPlayer(qualityOptions) {
+    function initPlayer(options) {
       if (plyr || !videoEl || !window.Plyr) return;
-      qualityOptions = qualityOptions || [];
-      plyr = new Plyr(videoEl, {
+      options = options || {};
+      var qualityOptions = options.qualityOptions || [];
+      var qualityValues = options.includeAuto ? [0].concat(qualityOptions) : qualityOptions;
+      var defaultQuality = typeof options.defaultQuality === 'number'
+        ? options.defaultQuality
+        : qualityValues[0];
+      var playerConfig = {
         controls: [
           'play-large',
           'rewind',
@@ -541,24 +602,32 @@
           'fullscreen'
         ],
         settings: qualityOptions.length ? ['captions', 'quality', 'speed'] : ['captions', 'speed'],
-        quality: qualityOptions.length ? {
-          default: 0,
-          options: [0].concat(qualityOptions), // Fixed syntax notation array definition
-          forced: true,
-          onChange: setQuality
-        } : undefined,
         i18n: {
-          qualityLabel: { 0: 'Auto' }
+          qualityLabel: options.includeAuto ? { 0: 'Auto' } : {}
         },
         seekTime: 10,
         captions: { active: false, language: 'auto', update: true },
         keyboard: { focused: true, global: true },
-        tooltips: { controls: true, seek: true },
-        previewThumbnails: previewThumbnails.length ? {
+        tooltips: { controls: true, seek: true }
+      };
+
+      if (qualityOptions.length) {
+        playerConfig.quality = {
+          default: defaultQuality,
+          options: qualityValues,
+          forced: true,
+          onChange: setQuality
+        };
+      }
+
+      if (previewThumbnails.length) {
+        playerConfig.previewThumbnails = {
           enabled: true,
           src: previewThumbnails
-        } : undefined
-      });
+        };
+      }
+
+      plyr = new Plyr(videoEl, playerConfig);
 
       wireSubtitleControls();
       disableSubtitles();
@@ -618,6 +687,9 @@
 
     function attachHlsSource(src) {
       if (!videoEl) return;
+      currentStreamType = 'hls';
+      fileQualityByHeight = {};
+      currentFileQuality = null;
       if (hls) {
         hls.destroy();
         hls = null;
@@ -632,7 +704,11 @@
         });
         hls.on(Hls.Events.MANIFEST_PARSED, function () {
           hls.subtitleTrack = -1;
-          initPlayer(getQualityOptions());
+          initPlayer({
+            qualityOptions: getQualityOptions(),
+            includeAuto: true,
+            defaultQuality: 0
+          });
           disableSubtitles();
           playVideo();
         });
@@ -653,12 +729,32 @@
       }
     }
 
+    function attachDirectSource(src, variants) {
+      if (!videoEl) return;
+      currentStreamType = 'file';
+      if (hls) {
+        hls.destroy();
+        hls = null;
+      }
+
+      var qualityOptions = getFileQualityOptions(variants);
+      currentFileQuality = qualityOptions[0] || null;
+      initPlayer({
+        qualityOptions: qualityOptions,
+        includeAuto: false,
+        defaultQuality: currentFileQuality
+      });
+      videoEl.src = src;
+      videoEl.load();
+      playVideo();
+    }
+
     function showPlayer() {
       setPlayerRendering(true);
       clearInterval(msgTimer);
       document.getElementById('loader').style.display = 'none';
       document.getElementById('player').style.display = 'block';
-      if (currentHlsUrl) document.getElementById('stream-actions').style.display = 'flex';
+      if (currentStreamUrl) document.getElementById('stream-actions').style.display = 'flex';
     }
 
     function showErr(msg) {
@@ -705,9 +801,15 @@
         .catch(function () { });
     }
 
-    function setHlsHelper(rawUrl) {
-      var proxiedPath = '/api/playlist.m3u8?url=' + encodeURIComponent(rawUrl);
-      currentHlsUrl = new URL(proxiedPath, location.href).href;
+    function setStreamHelper(stream) {
+      var copyButton = document.getElementById('copy-hls');
+      currentStreamType = inferStreamType(stream);
+      currentStreamUrl = stream && stream.url ? new URL(stream.url, location.href).href : '';
+      if (copyButton) {
+        var isFile = currentStreamType === 'file';
+        copyButton.textContent = isFile ? 'Video URL' : 'HLS URL';
+        copyButton.title = isFile ? 'Copy proxied video file URL' : 'Copy proxied HLS playlist URL';
+      }
     }
 
     function showCopyStatus(message) {
@@ -750,7 +852,7 @@
     }
 
     document.getElementById('copy-hls').addEventListener('click', function () {
-      copyText(currentHlsUrl, 'HLS URL copied');
+      copyText(currentStreamUrl, currentStreamType === 'file' ? 'Video URL copied' : 'HLS URL copied');
     });
 
     if (!id) {
@@ -765,11 +867,11 @@
         .then(function (r) { return r.json(); })
         .then(function (d) {
           if (d.error) return showErr(d.error);
-          if (!d.url) return showErr('No playlist in response');
-          setHlsHelper(d.url);
+          if (!d.url) return showErr('No stream in response');
+          setStreamHelper(d);
           setCaptionTracks(d.tracks);
           setPreviewThumbnails(d.previewThumbnails);
-          play(d.url);
+          play(d);
         })
         .catch(function (err) { showErr(err.message); });
     }
@@ -781,9 +883,24 @@
       });
     }
 
-    function play(rawUrl) {
-      var src = '/api/playlist.m3u8?url=' + encodeURIComponent(rawUrl);
-      attachHlsSource(src);
+    function inferStreamType(stream) {
+      if (stream && (stream.type === 'hls' || stream.type === 'file')) return stream.type;
+      var url = String((stream && stream.url) || '');
+      if (/\.m3u8(?:\?|#|$)/i.test(url)) return 'hls';
+      return url ? 'file' : '';
+    }
+
+    function play(stream) {
+      var type = inferStreamType(stream);
+      if (!stream || !stream.url) {
+        showErr('No stream in response');
+      } else if (type === 'hls') {
+        attachHlsSource(stream.url);
+      } else if (type === 'file') {
+        attachDirectSource(stream.url, stream.variants);
+      } else {
+        showErr('Unsupported stream type');
+      }
     }
   </script>
 </body>

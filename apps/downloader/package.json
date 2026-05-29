@@ -1,0 +1,5 @@
+{
+  "name": "stable-downloader",
+  "private": true,
+  "type": "module"
+}

@@ -4,6 +4,7 @@ build/
 .env
 .DS_Store
 *.log
+downloads/
 # Local Netlify folder
 .netlify
 downloads/

@@ -1,0 +1,1804 @@
+{
+  "info": {
+    "_postman_id": "0805423c-62f9-4436-ab8a-e3441b3511c7",
+    "name": "Movie Scraper Downloader API",
+    "description": "API for managing video downloads and optimization jobs\n\nContact Support:\n Name: Movie Scraper",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "32364102"
+  },
+  "item": [
+    {
+      "name": "health",
+      "item": [
+        {
+          "name": "Health check",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "health"
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "System health status",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/health",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "health"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"ok\": true,\n  \"db\": false,\n  \"jobs\": true,\n  \"disk\": {\n    \"availableBytes\": 6866.371332572594,\n    \"minFreeSpaceBytes\": 6624.325401512771\n  }\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "metrics",
+      "item": [
+        {
+          "name": "System metrics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/metrics",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "metrics"
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "System metrics",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/metrics",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "metrics"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"disk_available_bytes\": 1901.8698880484485,\n  \"disk_total_bytes\": 5401.14604722044,\n  \"disk_min_free_space_bytes\": 9569.83675044171\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "options",
+      "item": [
+        {
+          "name": "Get available stream variants",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/options?id=string&s=string&e=string",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "options"
+              ],
+              "query": [
+                {
+                  "key": "id",
+                  "value": "string",
+                  "description": "TMDB ID"
+                },
+                {
+                  "key": "s",
+                  "value": "string",
+                  "description": "Season number (for TV shows)"
+                },
+                {
+                  "key": "e",
+                  "value": "string",
+                  "description": "Episode number (for TV shows)"
+                }
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "Available stream variants",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/options?id=string&s=string&e=string",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "options"
+                  ],
+                  "query": [
+                    {
+                      "description": "TMDB ID",
+                      "key": "id",
+                      "value": "string"
+                    },
+                    {
+                      "description": "Season number (for TV shows)",
+                      "key": "s",
+                      "value": "string"
+                    },
+                    {
+                      "description": "Episode number (for TV shows)",
+                      "key": "e",
+                      "value": "string"
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"variants\": [\n    {\n      \"url\": \"string\",\n      \"label\": \"string\"\n    },\n    {\n      \"url\": \"string\",\n      \"label\": \"string\"\n    }\n  ]\n}"
+            },
+            {
+              "name": "Missing required parameters",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/options?id=string&s=string&e=string",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "options"
+                  ],
+                  "query": [
+                    {
+                      "description": "TMDB ID",
+                      "key": "id",
+                      "value": "string"
+                    },
+                    {
+                      "description": "Season number (for TV shows)",
+                      "key": "s",
+                      "value": "string"
+                    },
+                    {
+                      "description": "Episode number (for TV shows)",
+                      "key": "e",
+                      "value": "string"
+                    }
+                  ]
+                }
+              },
+              "status": "Bad Request",
+              "code": 400,
+              "_postman_previewlanguage": "text",
+              "header": [],
+              "cookie": [],
+              "body": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "proxy",
+      "item": [
+        {
+          "name": "segment",
+          "item": [
+            {
+              "name": "Proxy video segment",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/proxy/segment?url=string",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "proxy",
+                    "segment"
+                  ],
+                  "query": [
+                    {
+                      "key": "url",
+                      "value": "string",
+                      "description": "Segment URL to proxy"
+                    }
+                  ]
+                }
+              },
+              "response": [
+                {
+                  "name": "Missing URL parameter",
+                  "originalRequest": {
+                    "method": "GET",
+                    "header": [],
+                    "url": {
+                      "raw": "{{baseUrl}}/proxy/segment?url=string",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "proxy",
+                        "segment"
+                      ],
+                      "query": [
+                        {
+                          "description": "Segment URL to proxy",
+                          "key": "url",
+                          "value": "string"
+                        }
+                      ]
+                    }
+                  },
+                  "status": "Bad Request",
+                  "code": 400,
+                  "_postman_previewlanguage": "text",
+                  "header": [],
+                  "cookie": [],
+                  "body": ""
+                },
+                {
+                  "name": "Failed to fetch segment",
+                  "originalRequest": {
+                    "method": "GET",
+                    "header": [],
+                    "url": {
+                      "raw": "{{baseUrl}}/proxy/segment?url=string",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "proxy",
+                        "segment"
+                      ],
+                      "query": [
+                        {
+                          "description": "Segment URL to proxy",
+                          "key": "url",
+                          "value": "string"
+                        }
+                      ]
+                    }
+                  },
+                  "status": "Bad Gateway",
+                  "code": 502,
+                  "_postman_previewlanguage": "text",
+                  "header": [],
+                  "cookie": [],
+                  "body": ""
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "playlist.m3u8",
+          "item": [
+            {
+              "name": "Proxy HLS playlist",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/proxy/playlist.m3u8?url=string",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "proxy",
+                    "playlist.m3u8"
+                  ],
+                  "query": [
+                    {
+                      "key": "url",
+                      "value": "string",
+                      "description": "Playlist URL to proxy"
+                    }
+                  ]
+                }
+              },
+              "response": [
+                {
+                  "name": "Missing URL parameter",
+                  "originalRequest": {
+                    "method": "GET",
+                    "header": [],
+                    "url": {
+                      "raw": "{{baseUrl}}/proxy/playlist.m3u8?url=string",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "proxy",
+                        "playlist.m3u8"
+                      ],
+                      "query": [
+                        {
+                          "description": "Playlist URL to proxy",
+                          "key": "url",
+                          "value": "string"
+                        }
+                      ]
+                    }
+                  },
+                  "status": "Bad Request",
+                  "code": 400,
+                  "_postman_previewlanguage": "text",
+                  "header": [],
+                  "cookie": [],
+                  "body": ""
+                },
+                {
+                  "name": "Failed to fetch playlist",
+                  "originalRequest": {
+                    "method": "GET",
+                    "header": [],
+                    "url": {
+                      "raw": "{{baseUrl}}/proxy/playlist.m3u8?url=string",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "proxy",
+                        "playlist.m3u8"
+                      ],
+                      "query": [
+                        {
+                          "description": "Playlist URL to proxy",
+                          "key": "url",
+                          "value": "string"
+                        }
+                      ]
+                    }
+                  },
+                  "status": "Bad Gateway",
+                  "code": 502,
+                  "_postman_previewlanguage": "text",
+                  "header": [],
+                  "cookie": [],
+                  "body": ""
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "downloads",
+      "item": [
+        {
+          "name": "{id}",
+          "item": [
+            {
+              "name": "file",
+              "item": [
+                {
+                  "name": "Download the completed file",
+                  "request": {
+                    "method": "GET",
+                    "header": [],
+                    "url": {
+                      "raw": "{{baseUrl}}/downloads/:id/file",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "downloads",
+                        ":id",
+                        "file"
+                      ],
+                      "variable": [
+                        {
+                          "key": "id",
+                          "value": "string"
+                        }
+                      ]
+                    }
+                  },
+                  "response": [
+                    {
+                      "name": "Job or file not found",
+                      "originalRequest": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                          "raw": "{{baseUrl}}/downloads/:id/file",
+                          "host": [
+                            "{{baseUrl}}"
+                          ],
+                          "path": [
+                            "downloads",
+                            ":id",
+                            "file"
+                          ],
+                          "variable": [
+                            {
+                              "key": "id",
+                              "value": "string"
+                            }
+                          ]
+                        }
+                      },
+                      "status": "Not Found",
+                      "code": 404,
+                      "_postman_previewlanguage": "text",
+                      "header": [],
+                      "cookie": [],
+                      "body": ""
+                    },
+                    {
+                      "name": "File not ready yet",
+                      "originalRequest": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                          "raw": "{{baseUrl}}/downloads/:id/file",
+                          "host": [
+                            "{{baseUrl}}"
+                          ],
+                          "path": [
+                            "downloads",
+                            ":id",
+                            "file"
+                          ],
+                          "variable": [
+                            {
+                              "key": "id",
+                              "value": "string"
+                            }
+                          ]
+                        }
+                      },
+                      "status": "Conflict",
+                      "code": 409,
+                      "_postman_previewlanguage": "text",
+                      "header": [],
+                      "cookie": [],
+                      "body": ""
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "soft-delete",
+              "item": [
+                {
+                  "name": "Soft delete a download job",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      },
+                      {
+                        "key": "Accept",
+                        "value": "application/json"
+                      }
+                    ],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"reason\": \"string\"\n}",
+                      "options": {
+                        "raw": {
+                          "headerFamily": "json",
+                          "language": "json"
+                        }
+                      }
+                    },
+                    "url": {
+                      "raw": "{{baseUrl}}/downloads/:id/soft-delete",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "downloads",
+                        ":id",
+                        "soft-delete"
+                      ],
+                      "variable": [
+                        {
+                          "key": "id",
+                          "value": "string"
+                        }
+                      ]
+                    }
+                  },
+                  "response": [
+                    {
+                      "name": "Job soft deleted",
+                      "originalRequest": {
+                        "method": "POST",
+                        "header": [
+                          {
+                            "key": "Content-Type",
+                            "value": "application/json"
+                          },
+                          {
+                            "key": "Accept",
+                            "value": "application/json"
+                          }
+                        ],
+                        "body": {
+                          "mode": "raw",
+                          "raw": "{\n  \"reason\": \"string\"\n}",
+                          "options": {
+                            "raw": {
+                              "headerFamily": "json",
+                              "language": "json"
+                            }
+                          }
+                        },
+                        "url": {
+                          "raw": "{{baseUrl}}/downloads/:id/soft-delete",
+                          "host": [
+                            "{{baseUrl}}"
+                          ],
+                          "path": [
+                            "downloads",
+                            ":id",
+                            "soft-delete"
+                          ],
+                          "variable": [
+                            {
+                              "key": "id",
+                              "value": "string"
+                            }
+                          ]
+                        }
+                      },
+                      "status": "OK",
+                      "code": 200,
+                      "_postman_previewlanguage": "json",
+                      "header": [
+                        {
+                          "key": "Content-Type",
+                          "value": "application/json"
+                        }
+                      ],
+                      "cookie": [],
+                      "body": "{\n  \"job\": {\n    \"id\": \"string\",\n    \"status\": \"backing_off\",\n    \"title\": \"string\",\n    \"year\": 2223.1001623987636,\n    \"season\": 3778.598604632435,\n    \"episode\": 1309.1228847745717,\n    \"episodeTitle\": \"string\",\n    \"label\": \"string\",\n    \"fileBasename\": \"string\",\n    \"finalFilePath\": \"string\",\n    \"sourceFilePath\": \"string\",\n    \"finalFileKind\": \"ts\",\n    \"playlistUrl\": \"string\",\n    \"totalSegments\": 158.5050165797175,\n    \"completedSegments\": 8982.287158233285,\n    \"currentSegment\": 5078.99818878671,\n    \"bytesWritten\": 3654.2228212525997,\n    \"totalBytesEstimate\": 8523.801355680867,\n    \"currentConcurrency\": 2003.8742725955271,\n    \"maxConcurrency\": 5809.223579555473,\n    \"createdAt\": 8130.443531057401,\n    \"startedAt\": 3087.1342859154806,\n    \"lastProgressAt\": 2153.69282251763,\n    \"warningCount\": 3499.7055432071033,\n    \"retryCount\": 7646.355973639323,\n    \"backoffLevel\": 5916.291461766363\n  }\n}"
+                    },
+                    {
+                      "name": "Job not found",
+                      "originalRequest": {
+                        "method": "POST",
+                        "header": [
+                          {
+                            "key": "Content-Type",
+                            "value": "application/json"
+                          }
+                        ],
+                        "body": {
+                          "mode": "raw",
+                          "raw": "{\n  \"reason\": \"string\"\n}",
+                          "options": {
+                            "raw": {
+                              "headerFamily": "json",
+                              "language": "json"
+                            }
+                          }
+                        },
+                        "url": {
+                          "raw": "{{baseUrl}}/downloads/:id/soft-delete",
+                          "host": [
+                            "{{baseUrl}}"
+                          ],
+                          "path": [
+                            "downloads",
+                            ":id",
+                            "soft-delete"
+                          ],
+                          "variable": [
+                            {
+                              "key": "id",
+                              "value": "string"
+                            }
+                          ]
+                        }
+                      },
+                      "status": "Not Found",
+                      "code": 404,
+                      "_postman_previewlanguage": "text",
+                      "header": [],
+                      "cookie": [],
+                      "body": ""
+                    },
+                    {
+                      "name": "Job is still active",
+                      "originalRequest": {
+                        "method": "POST",
+                        "header": [
+                          {
+                            "key": "Content-Type",
+                            "value": "application/json"
+                          }
+                        ],
+                        "body": {
+                          "mode": "raw",
+                          "raw": "{\n  \"reason\": \"string\"\n}",
+                          "options": {
+                            "raw": {
+                              "headerFamily": "json",
+                              "language": "json"
+                            }
+                          }
+                        },
+                        "url": {
+                          "raw": "{{baseUrl}}/downloads/:id/soft-delete",
+                          "host": [
+                            "{{baseUrl}}"
+                          ],
+                          "path": [
+                            "downloads",
+                            ":id",
+                            "soft-delete"
+                          ],
+                          "variable": [
+                            {
+                              "key": "id",
+                              "value": "string"
+                            }
+                          ]
+                        }
+                      },
+                      "status": "Conflict",
+                      "code": 409,
+                      "_postman_previewlanguage": "text",
+                      "header": [],
+                      "cookie": [],
+                      "body": ""
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "pause",
+              "item": [
+                {
+                  "name": "Pause a download",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Accept",
+                        "value": "application/json"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/downloads/:id/pause",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "downloads",
+                        ":id",
+                        "pause"
+                      ],
+                      "variable": [
+                        {
+                          "key": "id",
+                          "value": "string"
+                        }
+                      ]
+                    }
+                  },
+                  "response": [
+                    {
+                      "name": "Download paused",
+                      "originalRequest": {
+                        "method": "POST",
+                        "header": [
+                          {
+                            "key": "Accept",
+                            "value": "application/json"
+                          }
+                        ],
+                        "url": {
+                          "raw": "{{baseUrl}}/downloads/:id/pause",
+                          "host": [
+                            "{{baseUrl}}"
+                          ],
+                          "path": [
+                            "downloads",
+                            ":id",
+                            "pause"
+                          ],
+                          "variable": [
+                            {
+                              "key": "id",
+                              "value": "string"
+                            }
+                          ]
+                        }
+                      },
+                      "status": "OK",
+                      "code": 200,
+                      "_postman_previewlanguage": "json",
+                      "header": [
+                        {
+                          "key": "Content-Type",
+                          "value": "application/json"
+                        }
+                      ],
+                      "cookie": [],
+                      "body": "{\n  \"job\": {\n    \"id\": \"string\",\n    \"status\": \"backing_off\",\n    \"title\": \"string\",\n    \"year\": 2223.1001623987636,\n    \"season\": 3778.598604632435,\n    \"episode\": 1309.1228847745717,\n    \"episodeTitle\": \"string\",\n    \"label\": \"string\",\n    \"fileBasename\": \"string\",\n    \"finalFilePath\": \"string\",\n    \"sourceFilePath\": \"string\",\n    \"finalFileKind\": \"ts\",\n    \"playlistUrl\": \"string\",\n    \"totalSegments\": 158.5050165797175,\n    \"completedSegments\": 8982.287158233285,\n    \"currentSegment\": 5078.99818878671,\n    \"bytesWritten\": 3654.2228212525997,\n    \"totalBytesEstimate\": 8523.801355680867,\n    \"currentConcurrency\": 2003.8742725955271,\n    \"maxConcurrency\": 5809.223579555473,\n    \"createdAt\": 8130.443531057401,\n    \"startedAt\": 3087.1342859154806,\n    \"lastProgressAt\": 2153.69282251763,\n    \"warningCount\": 3499.7055432071033,\n    \"retryCount\": 7646.355973639323,\n    \"backoffLevel\": 5916.291461766363\n  }\n}"
+                    },
+                    {
+                      "name": "Job not found",
+                      "originalRequest": {
+                        "method": "POST",
+                        "header": [],
+                        "url": {
+                          "raw": "{{baseUrl}}/downloads/:id/pause",
+                          "host": [
+                            "{{baseUrl}}"
+                          ],
+                          "path": [
+                            "downloads",
+                            ":id",
+                            "pause"
+                          ],
+                          "variable": [
+                            {
+                              "key": "id",
+                              "value": "string"
+                            }
+                          ]
+                        }
+                      },
+                      "status": "Not Found",
+                      "code": 404,
+                      "_postman_previewlanguage": "text",
+                      "header": [],
+                      "cookie": [],
+                      "body": ""
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "resume",
+              "item": [
+                {
+                  "name": "Resume a paused download",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Accept",
+                        "value": "application/json"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/downloads/:id/resume",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "downloads",
+                        ":id",
+                        "resume"
+                      ],
+                      "variable": [
+                        {
+                          "key": "id",
+                          "value": "string"
+                        }
+                      ]
+                    }
+                  },
+                  "response": [
+                    {
+                      "name": "Download resumed",
+                      "originalRequest": {
+                        "method": "POST",
+                        "header": [
+                          {
+                            "key": "Accept",
+                            "value": "application/json"
+                          }
+                        ],
+                        "url": {
+                          "raw": "{{baseUrl}}/downloads/:id/resume",
+                          "host": [
+                            "{{baseUrl}}"
+                          ],
+                          "path": [
+                            "downloads",
+                            ":id",
+                            "resume"
+                          ],
+                          "variable": [
+                            {
+                              "key": "id",
+                              "value": "string"
+                            }
+                          ]
+                        }
+                      },
+                      "status": "OK",
+                      "code": 200,
+                      "_postman_previewlanguage": "json",
+                      "header": [
+                        {
+                          "key": "Content-Type",
+                          "value": "application/json"
+                        }
+                      ],
+                      "cookie": [],
+                      "body": "{\n  \"job\": {\n    \"id\": \"string\",\n    \"status\": \"backing_off\",\n    \"title\": \"string\",\n    \"year\": 2223.1001623987636,\n    \"season\": 3778.598604632435,\n    \"episode\": 1309.1228847745717,\n    \"episodeTitle\": \"string\",\n    \"label\": \"string\",\n    \"fileBasename\": \"string\",\n    \"finalFilePath\": \"string\",\n    \"sourceFilePath\": \"string\",\n    \"finalFileKind\": \"ts\",\n    \"playlistUrl\": \"string\",\n    \"totalSegments\": 158.5050165797175,\n    \"completedSegments\": 8982.287158233285,\n    \"currentSegment\": 5078.99818878671,\n    \"bytesWritten\": 3654.2228212525997,\n    \"totalBytesEstimate\": 8523.801355680867,\n    \"currentConcurrency\": 2003.8742725955271,\n    \"maxConcurrency\": 5809.223579555473,\n    \"createdAt\": 8130.443531057401,\n    \"startedAt\": 3087.1342859154806,\n    \"lastProgressAt\": 2153.69282251763,\n    \"warningCount\": 3499.7055432071033,\n    \"retryCount\": 7646.355973639323,\n    \"backoffLevel\": 5916.291461766363\n  }\n}"
+                    },
+                    {
+                      "name": "Job not found",
+                      "originalRequest": {
+                        "method": "POST",
+                        "header": [],
+                        "url": {
+                          "raw": "{{baseUrl}}/downloads/:id/resume",
+                          "host": [
+                            "{{baseUrl}}"
+                          ],
+                          "path": [
+                            "downloads",
+                            ":id",
+                            "resume"
+                          ],
+                          "variable": [
+                            {
+                              "key": "id",
+                              "value": "string"
+                            }
+                          ]
+                        }
+                      },
+                      "status": "Not Found",
+                      "code": 404,
+                      "_postman_previewlanguage": "text",
+                      "header": [],
+                      "cookie": [],
+                      "body": ""
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "cancel",
+              "item": [
+                {
+                  "name": "Cancel a download",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Accept",
+                        "value": "application/json"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/downloads/:id/cancel",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "downloads",
+                        ":id",
+                        "cancel"
+                      ],
+                      "variable": [
+                        {
+                          "key": "id",
+                          "value": "string"
+                        }
+                      ]
+                    }
+                  },
+                  "response": [
+                    {
+                      "name": "Download cancelled",
+                      "originalRequest": {
+                        "method": "POST",
+                        "header": [
+                          {
+                            "key": "Accept",
+                            "value": "application/json"
+                          }
+                        ],
+                        "url": {
+                          "raw": "{{baseUrl}}/downloads/:id/cancel",
+                          "host": [
+                            "{{baseUrl}}"
+                          ],
+                          "path": [
+                            "downloads",
+                            ":id",
+                            "cancel"
+                          ],
+                          "variable": [
+                            {
+                              "key": "id",
+                              "value": "string"
+                            }
+                          ]
+                        }
+                      },
+                      "status": "OK",
+                      "code": 200,
+                      "_postman_previewlanguage": "json",
+                      "header": [
+                        {
+                          "key": "Content-Type",
+                          "value": "application/json"
+                        }
+                      ],
+                      "cookie": [],
+                      "body": "{\n  \"job\": {\n    \"id\": \"string\",\n    \"status\": \"backing_off\",\n    \"title\": \"string\",\n    \"year\": 2223.1001623987636,\n    \"season\": 3778.598604632435,\n    \"episode\": 1309.1228847745717,\n    \"episodeTitle\": \"string\",\n    \"label\": \"string\",\n    \"fileBasename\": \"string\",\n    \"finalFilePath\": \"string\",\n    \"sourceFilePath\": \"string\",\n    \"finalFileKind\": \"ts\",\n    \"playlistUrl\": \"string\",\n    \"totalSegments\": 158.5050165797175,\n    \"completedSegments\": 8982.287158233285,\n    \"currentSegment\": 5078.99818878671,\n    \"bytesWritten\": 3654.2228212525997,\n    \"totalBytesEstimate\": 8523.801355680867,\n    \"currentConcurrency\": 2003.8742725955271,\n    \"maxConcurrency\": 5809.223579555473,\n    \"createdAt\": 8130.443531057401,\n    \"startedAt\": 3087.1342859154806,\n    \"lastProgressAt\": 2153.69282251763,\n    \"warningCount\": 3499.7055432071033,\n    \"retryCount\": 7646.355973639323,\n    \"backoffLevel\": 5916.291461766363\n  }\n}"
+                    },
+                    {
+                      "name": "Job not found",
+                      "originalRequest": {
+                        "method": "POST",
+                        "header": [],
+                        "url": {
+                          "raw": "{{baseUrl}}/downloads/:id/cancel",
+                          "host": [
+                            "{{baseUrl}}"
+                          ],
+                          "path": [
+                            "downloads",
+                            ":id",
+                            "cancel"
+                          ],
+                          "variable": [
+                            {
+                              "key": "id",
+                              "value": "string"
+                            }
+                          ]
+                        }
+                      },
+                      "status": "Not Found",
+                      "code": 404,
+                      "_postman_previewlanguage": "text",
+                      "header": [],
+                      "cookie": [],
+                      "body": ""
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "optimize",
+              "item": [
+                {
+                  "name": "Create an optimization job for a completed download",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      },
+                      {
+                        "key": "Accept",
+                        "value": "application/json"
+                      }
+                    ],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"codec\": \"libx265\",\n  \"crf\": 23,\n  \"preset\": \"slow\",\n  \"audioMode\": \"copy\",\n  \"audioBitrate\": \"160k\"\n}",
+                      "options": {
+                        "raw": {
+                          "headerFamily": "json",
+                          "language": "json"
+                        }
+                      }
+                    },
+                    "url": {
+                      "raw": "{{baseUrl}}/downloads/:id/optimize",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "downloads",
+                        ":id",
+                        "optimize"
+                      ],
+                      "variable": [
+                        {
+                          "key": "id",
+                          "value": "string"
+                        }
+                      ]
+                    }
+                  },
+                  "response": [
+                    {
+                      "name": "Optimization job created",
+                      "originalRequest": {
+                        "method": "POST",
+                        "header": [
+                          {
+                            "key": "Content-Type",
+                            "value": "application/json"
+                          },
+                          {
+                            "key": "Accept",
+                            "value": "application/json"
+                          }
+                        ],
+                        "body": {
+                          "mode": "raw",
+                          "raw": "{\n  \"codec\": \"libx265\",\n  \"crf\": 23,\n  \"preset\": \"slow\",\n  \"audioMode\": \"copy\",\n  \"audioBitrate\": \"160k\"\n}",
+                          "options": {
+                            "raw": {
+                              "headerFamily": "json",
+                              "language": "json"
+                            }
+                          }
+                        },
+                        "url": {
+                          "raw": "{{baseUrl}}/downloads/:id/optimize",
+                          "host": [
+                            "{{baseUrl}}"
+                          ],
+                          "path": [
+                            "downloads",
+                            ":id",
+                            "optimize"
+                          ],
+                          "variable": [
+                            {
+                              "key": "id",
+                              "value": "string"
+                            }
+                          ]
+                        }
+                      },
+                      "status": "Accepted",
+                      "code": 202,
+                      "_postman_previewlanguage": "json",
+                      "header": [
+                        {
+                          "key": "Content-Type",
+                          "value": "application/json"
+                        }
+                      ],
+                      "cookie": [],
+                      "body": "{\n  \"optimization\": {\n    \"id\": \"string\",\n    \"sourceJobId\": \"string\",\n    \"sourcePath\": \"string\",\n    \"status\": \"failed\",\n    \"codec\": \"string\",\n    \"crf\": 8330.54189282759,\n    \"preset\": \"string\",\n    \"audioMode\": \"string\",\n    \"audioBitrate\": \"string\",\n    \"progress\": 884.580709836893,\n    \"createdAt\": 4910.526659631906,\n    \"startedAt\": 7117.205378961146,\n    \"completedAt\": 743.0560764060035\n  }\n}"
+                    },
+                    {
+                      "name": "Job not found",
+                      "originalRequest": {
+                        "method": "POST",
+                        "header": [
+                          {
+                            "key": "Content-Type",
+                            "value": "application/json"
+                          }
+                        ],
+                        "body": {
+                          "mode": "raw",
+                          "raw": "{\n  \"codec\": \"libx265\",\n  \"crf\": 23,\n  \"preset\": \"slow\",\n  \"audioMode\": \"copy\",\n  \"audioBitrate\": \"160k\"\n}",
+                          "options": {
+                            "raw": {
+                              "headerFamily": "json",
+                              "language": "json"
+                            }
+                          }
+                        },
+                        "url": {
+                          "raw": "{{baseUrl}}/downloads/:id/optimize",
+                          "host": [
+                            "{{baseUrl}}"
+                          ],
+                          "path": [
+                            "downloads",
+                            ":id",
+                            "optimize"
+                          ],
+                          "variable": [
+                            {
+                              "key": "id",
+                              "value": "string"
+                            }
+                          ]
+                        }
+                      },
+                      "status": "Not Found",
+                      "code": 404,
+                      "_postman_previewlanguage": "text",
+                      "header": [],
+                      "cookie": [],
+                      "body": ""
+                    },
+                    {
+                      "name": "Job not complete or has no file",
+                      "originalRequest": {
+                        "method": "POST",
+                        "header": [
+                          {
+                            "key": "Content-Type",
+                            "value": "application/json"
+                          }
+                        ],
+                        "body": {
+                          "mode": "raw",
+                          "raw": "{\n  \"codec\": \"libx265\",\n  \"crf\": 23,\n  \"preset\": \"slow\",\n  \"audioMode\": \"copy\",\n  \"audioBitrate\": \"160k\"\n}",
+                          "options": {
+                            "raw": {
+                              "headerFamily": "json",
+                              "language": "json"
+                            }
+                          }
+                        },
+                        "url": {
+                          "raw": "{{baseUrl}}/downloads/:id/optimize",
+                          "host": [
+                            "{{baseUrl}}"
+                          ],
+                          "path": [
+                            "downloads",
+                            ":id",
+                            "optimize"
+                          ],
+                          "variable": [
+                            {
+                              "key": "id",
+                              "value": "string"
+                            }
+                          ]
+                        }
+                      },
+                      "status": "Conflict",
+                      "code": 409,
+                      "_postman_previewlanguage": "text",
+                      "header": [],
+                      "cookie": [],
+                      "body": ""
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Get download job details",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/downloads/:id",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "downloads",
+                    ":id"
+                  ],
+                  "variable": [
+                    {
+                      "key": "id",
+                      "value": "string"
+                    }
+                  ]
+                }
+              },
+              "response": [
+                {
+                  "name": "Download job details",
+                  "originalRequest": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "Accept",
+                        "value": "application/json"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/downloads/:id",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "downloads",
+                        ":id"
+                      ],
+                      "variable": [
+                        {
+                          "key": "id",
+                          "value": "string"
+                        }
+                      ]
+                    }
+                  },
+                  "status": "OK",
+                  "code": 200,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/json"
+                    }
+                  ],
+                  "cookie": [],
+                  "body": "{\n  \"job\": {\n    \"id\": \"string\",\n    \"status\": \"backing_off\",\n    \"title\": \"string\",\n    \"year\": 2223.1001623987636,\n    \"season\": 3778.598604632435,\n    \"episode\": 1309.1228847745717,\n    \"episodeTitle\": \"string\",\n    \"label\": \"string\",\n    \"fileBasename\": \"string\",\n    \"finalFilePath\": \"string\",\n    \"sourceFilePath\": \"string\",\n    \"finalFileKind\": \"ts\",\n    \"playlistUrl\": \"string\",\n    \"totalSegments\": 158.5050165797175,\n    \"completedSegments\": 8982.287158233285,\n    \"currentSegment\": 5078.99818878671,\n    \"bytesWritten\": 3654.2228212525997,\n    \"totalBytesEstimate\": 8523.801355680867,\n    \"currentConcurrency\": 2003.8742725955271,\n    \"maxConcurrency\": 5809.223579555473,\n    \"createdAt\": 8130.443531057401,\n    \"startedAt\": 3087.1342859154806,\n    \"lastProgressAt\": 2153.69282251763,\n    \"warningCount\": 3499.7055432071033,\n    \"retryCount\": 7646.355973639323,\n    \"backoffLevel\": 5916.291461766363\n  }\n}"
+                },
+                {
+                  "name": "Job not found",
+                  "originalRequest": {
+                    "method": "GET",
+                    "header": [],
+                    "url": {
+                      "raw": "{{baseUrl}}/downloads/:id",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "downloads",
+                        ":id"
+                      ],
+                      "variable": [
+                        {
+                          "key": "id",
+                          "value": "string"
+                        }
+                      ]
+                    }
+                  },
+                  "status": "Not Found",
+                  "code": 404,
+                  "_postman_previewlanguage": "text",
+                  "header": [],
+                  "cookie": [],
+                  "body": ""
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Create a new download job",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"string\",\n  \"s\": \"string\",\n  \"e\": \"string\",\n  \"title\": \"string\",\n  \"year\": 7096.327582063788,\n  \"episodeTitle\": \"string\",\n  \"tmdbId\": \"string\",\n  \"season\": 3302.4461301925844,\n  \"episode\": 9398.605319342696,\n  \"playlistUrl\": \"string\",\n  \"label\": \"string\"\n}",
+              "options": {
+                "raw": {
+                  "headerFamily": "json",
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/downloads",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "downloads"
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "File already downloaded and ready",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"id\": \"string\",\n  \"s\": \"string\",\n  \"e\": \"string\",\n  \"title\": \"string\",\n  \"year\": 7096.327582063788,\n  \"episodeTitle\": \"string\",\n  \"tmdbId\": \"string\",\n  \"season\": 3302.4461301925844,\n  \"episode\": 9398.605319342696,\n  \"playlistUrl\": \"string\",\n  \"label\": \"string\"\n}",
+                  "options": {
+                    "raw": {
+                      "headerFamily": "json",
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/downloads",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "downloads"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"job\": {\n    \"id\": \"string\",\n    \"status\": \"backing_off\",\n    \"title\": \"string\",\n    \"year\": 2223.1001623987636,\n    \"season\": 3778.598604632435,\n    \"episode\": 1309.1228847745717,\n    \"episodeTitle\": \"string\",\n    \"label\": \"string\",\n    \"fileBasename\": \"string\",\n    \"finalFilePath\": \"string\",\n    \"sourceFilePath\": \"string\",\n    \"finalFileKind\": \"ts\",\n    \"playlistUrl\": \"string\",\n    \"totalSegments\": 158.5050165797175,\n    \"completedSegments\": 8982.287158233285,\n    \"currentSegment\": 5078.99818878671,\n    \"bytesWritten\": 3654.2228212525997,\n    \"totalBytesEstimate\": 8523.801355680867,\n    \"currentConcurrency\": 2003.8742725955271,\n    \"maxConcurrency\": 5809.223579555473,\n    \"createdAt\": 8130.443531057401,\n    \"startedAt\": 3087.1342859154806,\n    \"lastProgressAt\": 2153.69282251763,\n    \"warningCount\": 3499.7055432071033,\n    \"retryCount\": 7646.355973639323,\n    \"backoffLevel\": 5916.291461766363\n  }\n}"
+            },
+            {
+              "name": "Download job created or queued",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"id\": \"string\",\n  \"s\": \"string\",\n  \"e\": \"string\",\n  \"title\": \"string\",\n  \"year\": 7096.327582063788,\n  \"episodeTitle\": \"string\",\n  \"tmdbId\": \"string\",\n  \"season\": 3302.4461301925844,\n  \"episode\": 9398.605319342696,\n  \"playlistUrl\": \"string\",\n  \"label\": \"string\"\n}",
+                  "options": {
+                    "raw": {
+                      "headerFamily": "json",
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/downloads",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "downloads"
+                  ]
+                }
+              },
+              "status": "Accepted",
+              "code": 202,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"job\": {\n    \"id\": \"string\",\n    \"status\": \"backing_off\",\n    \"title\": \"string\",\n    \"year\": 2223.1001623987636,\n    \"season\": 3778.598604632435,\n    \"episode\": 1309.1228847745717,\n    \"episodeTitle\": \"string\",\n    \"label\": \"string\",\n    \"fileBasename\": \"string\",\n    \"finalFilePath\": \"string\",\n    \"sourceFilePath\": \"string\",\n    \"finalFileKind\": \"ts\",\n    \"playlistUrl\": \"string\",\n    \"totalSegments\": 158.5050165797175,\n    \"completedSegments\": 8982.287158233285,\n    \"currentSegment\": 5078.99818878671,\n    \"bytesWritten\": 3654.2228212525997,\n    \"totalBytesEstimate\": 8523.801355680867,\n    \"currentConcurrency\": 2003.8742725955271,\n    \"maxConcurrency\": 5809.223579555473,\n    \"createdAt\": 8130.443531057401,\n    \"startedAt\": 3087.1342859154806,\n    \"lastProgressAt\": 2153.69282251763,\n    \"warningCount\": 3499.7055432071033,\n    \"retryCount\": 7646.355973639323,\n    \"backoffLevel\": 5916.291461766363\n  }\n}"
+            },
+            {
+              "name": "Invalid request",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"id\": \"string\",\n  \"s\": \"string\",\n  \"e\": \"string\",\n  \"title\": \"string\",\n  \"year\": 7096.327582063788,\n  \"episodeTitle\": \"string\",\n  \"tmdbId\": \"string\",\n  \"season\": 3302.4461301925844,\n  \"episode\": 9398.605319342696,\n  \"playlistUrl\": \"string\",\n  \"label\": \"string\"\n}",
+                  "options": {
+                    "raw": {
+                      "headerFamily": "json",
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/downloads",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "downloads"
+                  ]
+                }
+              },
+              "status": "Bad Request",
+              "code": 400,
+              "_postman_previewlanguage": "text",
+              "header": [],
+              "cookie": [],
+              "body": ""
+            }
+          ]
+        },
+        {
+          "name": "List all download jobs",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/downloads?limit=50&includeDeleted=false",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "downloads"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "50",
+                  "description": "Maximum number of jobs to return"
+                },
+                {
+                  "key": "includeDeleted",
+                  "value": "false",
+                  "description": "Include soft-deleted jobs"
+                }
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "List of download jobs",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/downloads?limit=50&includeDeleted=false",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "downloads"
+                  ],
+                  "query": [
+                    {
+                      "description": "Maximum number of jobs to return",
+                      "key": "limit",
+                      "value": "50"
+                    },
+                    {
+                      "description": "Include soft-deleted jobs",
+                      "key": "includeDeleted",
+                      "value": "false"
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"jobs\": [\n    {\n      \"id\": \"string\",\n      \"status\": \"paused\",\n      \"title\": \"string\",\n      \"year\": 6943.865712640245,\n      \"season\": 2484.1309185108516,\n      \"episode\": 2395.398867222349,\n      \"episodeTitle\": \"string\",\n      \"label\": \"string\",\n      \"fileBasename\": \"string\",\n      \"finalFilePath\": \"string\",\n      \"sourceFilePath\": \"string\",\n      \"finalFileKind\": \"ts\",\n      \"playlistUrl\": \"string\",\n      \"totalSegments\": 4024.787317493093,\n      \"completedSegments\": 6658.722926013905,\n      \"currentSegment\": 9173.145138834421,\n      \"bytesWritten\": 127.29608834166184,\n      \"totalBytesEstimate\": 6427.076088011092,\n      \"currentConcurrency\": 8550.78924712287,\n      \"maxConcurrency\": 7168.5268118714275,\n      \"createdAt\": 6637.050980095564,\n      \"startedAt\": 7787.976806303775,\n      \"lastProgressAt\": 1341.6532590376805,\n      \"warningCount\": 5292.141957348988,\n      \"retryCount\": 5929.835482575006,\n      \"backoffLevel\": 590.444714456868\n    },\n    {\n      \"id\": \"string\",\n      \"status\": \"queued\",\n      \"title\": \"string\",\n      \"year\": 3005.3368175293626,\n      \"season\": 2321.0037617819257,\n      \"episode\": 1346.480411947004,\n      \"episodeTitle\": \"string\",\n      \"label\": \"string\",\n      \"fileBasename\": \"string\",\n      \"finalFilePath\": \"string\",\n      \"sourceFilePath\": \"string\",\n      \"finalFileKind\": \"mp4\",\n      \"playlistUrl\": \"string\",\n      \"totalSegments\": 7718.4626079533355,\n      \"completedSegments\": 304.6477635521372,\n      \"currentSegment\": 6625.124886307239,\n      \"bytesWritten\": 3972.47278503174,\n      \"totalBytesEstimate\": 430.78288271416466,\n      \"currentConcurrency\": 6202.946524880921,\n      \"maxConcurrency\": 3797.351709369128,\n      \"createdAt\": 2879.883628430635,\n      \"startedAt\": 9022.728180210583,\n      \"lastProgressAt\": 8914.08043230192,\n      \"warningCount\": 1865.3354292563852,\n      \"retryCount\": 6791.24467229713,\n      \"backoffLevel\": 1436.539147030289\n    }\n  ]\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "optimizations",
+      "item": [
+        {
+          "name": "List all optimization jobs",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/optimizations",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "optimizations"
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "List of optimization jobs",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/optimizations",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "optimizations"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"optimizations\": [\n    {\n      \"id\": \"string\",\n      \"sourceJobId\": \"string\",\n      \"sourcePath\": \"string\",\n      \"status\": \"completed\",\n      \"codec\": \"string\",\n      \"crf\": 2208.0988154405113,\n      \"preset\": \"string\",\n      \"audioMode\": \"string\",\n      \"audioBitrate\": \"string\",\n      \"progress\": 7145.355149245572,\n      \"createdAt\": 3393.9429865501093,\n      \"startedAt\": 4202.845306388265,\n      \"completedAt\": 1010.1058315694522\n    },\n    {\n      \"id\": \"string\",\n      \"sourceJobId\": \"string\",\n      \"sourcePath\": \"string\",\n      \"status\": \"queued\",\n      \"codec\": \"string\",\n      \"crf\": 1525.6533482197376,\n      \"preset\": \"string\",\n      \"audioMode\": \"string\",\n      \"audioBitrate\": \"string\",\n      \"progress\": 239.3474596550371,\n      \"createdAt\": 9296.948738055233,\n      \"startedAt\": 822.6750717703801,\n      \"completedAt\": 9078.024846312866\n    }\n  ]\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "cleanup",
+      "item": [
+        {
+          "name": "preview",
+          "item": [
+            {
+              "name": "Preview cleanup opportunities",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/cleanup/preview",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "cleanup",
+                    "preview"
+                  ]
+                }
+              },
+              "response": [
+                {
+                  "name": "Cleanup preview",
+                  "originalRequest": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "Accept",
+                        "value": "application/json"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/cleanup/preview",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "cleanup",
+                        "preview"
+                      ]
+                    }
+                  },
+                  "status": "OK",
+                  "code": 200,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/json"
+                    }
+                  ],
+                  "cookie": [],
+                  "body": "{\n  \"items\": [\n    {\n      \"type\": \"source_ts\",\n      \"jobId\": \"string\",\n      \"path\": \"string\",\n      \"size\": 7539.704960086964\n    },\n    {\n      \"type\": \"staging_part\",\n      \"jobId\": \"string\",\n      \"path\": \"string\",\n      \"size\": 1107.8316165652536\n    }\n  ],\n  \"reclaimableBytes\": 3613.006754915371\n}"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "apply",
+          "item": [
+            {
+              "name": "Apply cleanup to remove temporary files",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/cleanup/apply",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "cleanup",
+                    "apply"
+                  ]
+                }
+              },
+              "response": [
+                {
+                  "name": "Cleanup completed",
+                  "originalRequest": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Accept",
+                        "value": "application/json"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/cleanup/apply",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "cleanup",
+                        "apply"
+                      ]
+                    }
+                  },
+                  "status": "OK",
+                  "code": 200,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/json"
+                    }
+                  ],
+                  "cookie": [],
+                  "body": "{\n  \"reclaimedBytes\": 755.9322627134035\n}"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "port",
+      "value": "5050"
+    },
+    {
+      "key": "host",
+      "value": "127.0.0.1"
+    },
+    {
+      "key": "baseUrl",
+      "value": "http://127.0.0.1:5050"
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "watch": [
+    "apps/downloader/src",
+    "apps/downloader/migrations",
+    "package.json"
+  ],
+  "ext": "ts,json",
+  "ignore": [
+    "downloads/**",
+    "node_modules/**",
+    "apps/downloads/**"
+  ],
+  "exec": "node --experimental-strip-types apps/downloader/src/main/stack-main.ts"
+}

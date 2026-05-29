@@ -6,3 +6,4 @@ build/
 *.log
 # Local Netlify folder
 .netlify
+downloads/

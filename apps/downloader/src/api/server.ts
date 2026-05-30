@@ -1,5 +1,7 @@
 import fs from "node:fs";
 import fsp from "node:fs/promises";
+import http from "node:http";
+import https from "node:https";
 import Fastify, {
   type FastifyError,
   type FastifyInstance,
@@ -19,6 +21,8 @@ import { fileSize, getDiskSpace } from "../infra/files/disk.ts";
 import type { DownloadRequest } from "../shared/types.ts";
 
 const log = createLogger("api");
+const fileHttpAgent = new http.Agent({ keepAlive: true, maxSockets: 32 });
+const fileHttpsAgent = new https.Agent({ keepAlive: true, maxSockets: 32 });
 
 type IdParams = { id: string };
 type ActionParams = { id: string; action: "pause" | "resume" | "cancel" };
@@ -62,6 +66,78 @@ function rewritePlaylist(body: string, url: string): string {
 
 function errorPayload(err: unknown): { error: string } {
   return { error: err instanceof Error ? err.message : String(err) };
+}
+
+function fileProxyHeaders(
+  upstreamHeaders: http.IncomingHttpHeaders,
+): Record<string, string> {
+  const headers: Record<string, string> = {
+    "Content-Type": String(
+      upstreamHeaders["content-type"] || "application/octet-stream",
+    ),
+    "Accept-Ranges": String(upstreamHeaders["accept-ranges"] || "bytes"),
+  };
+  [
+    "content-length",
+    "content-range",
+    "cache-control",
+    "etag",
+    "last-modified",
+  ].forEach((name) => {
+    const value = upstreamHeaders[name];
+    if (typeof value === "string") headers[name] = value;
+  });
+  return headers;
+}
+
+function fetchRawFileUpstream(
+  rawUrl: string,
+  range: string | undefined,
+  redirects = 0,
+): Promise<http.IncomingMessage> {
+  return new Promise((resolve, reject) => {
+    if (redirects > 5) {
+      reject(new Error("too many redirects"));
+      return;
+    }
+    const requestUrl = new URL(rawUrl);
+    const isHttps = requestUrl.protocol === "https:";
+    const headers: Record<string, string> = {
+      Accept: "*/*",
+      "Accept-Encoding": "identity",
+      Referer: config.referer,
+      "User-Agent": config.userAgent,
+    };
+    if (range) headers.Range = range;
+
+    const request = (isHttps ? https : http).get(
+      requestUrl,
+      {
+        agent: isHttps ? fileHttpsAgent : fileHttpAgent,
+        headers,
+      },
+      (res) => {
+        if (
+          res.statusCode &&
+          res.statusCode >= 300 &&
+          res.statusCode < 400 &&
+          res.headers.location
+        ) {
+          const location = res.headers.location.startsWith("http")
+            ? res.headers.location
+            : new URL(res.headers.location, requestUrl).href;
+          res.resume();
+          resolve(fetchRawFileUpstream(location, range, redirects + 1));
+          return;
+        }
+        resolve(res);
+      },
+    );
+    request.setTimeout(30000, () =>
+      request.destroy(new Error("request timed out")),
+    );
+    request.on("error", reject);
+  });
 }
 
 function jobNotFound(reply: FastifyReply): FastifyReply {
@@ -238,6 +314,30 @@ function registerRoutes(app: FastifyInstance): void {
           .send(segment.body);
       } catch (err) {
         return reply.code(502).send(errorPayload(err));
+      }
+    },
+  );
+
+  app.get<{ Querystring: ProxyQuery }>(
+    "/proxy/file",
+    async (request, reply) => {
+      const rawUrl = request.query.url;
+      if (!rawUrl) return reply.code(400).send({ error: "missing url" });
+      try {
+        const range =
+          typeof request.headers.range === "string"
+            ? request.headers.range
+            : undefined;
+        const upstream = await fetchRawFileUpstream(rawUrl, range);
+        reply.hijack();
+        reply.raw.writeHead(
+          upstream.statusCode || 200,
+          fileProxyHeaders(upstream.headers),
+        );
+        request.raw.on("close", () => upstream.destroy());
+        upstream.pipe(reply.raw);
+      } catch (err) {
+        if (!reply.sent) return reply.code(502).send(errorPayload(err));
       }
     },
   );
@@ -439,7 +539,13 @@ export function startApiServer(): FastifyInstance {
   void app.register(cors, {
     origin: true,
     methods: ["GET", "POST", "OPTIONS"],
-    allowedHeaders: ["Content-Type"],
+    allowedHeaders: ["Content-Type", "Range"],
+    exposedHeaders: [
+      "Accept-Ranges",
+      "Content-Length",
+      "Content-Range",
+      "Content-Type",
+    ],
   });
 
   app.setErrorHandler((err: FastifyError, _request, reply) => {

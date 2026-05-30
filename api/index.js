@@ -12,7 +12,7 @@ const UA =
 const HTTP_AGENT = new http.Agent({ keepAlive: true, maxSockets: 16 });
 const HTTPS_AGENT = new https.Agent({ keepAlive: true, maxSockets: 16 });
 const TMDB_KEY = "3a73619bbb8fc6d47742d1b5b2b707b5";
-const FILE_RANGE_CHUNK_SIZE = 2 * 1024 * 1024;
+const FILE_RANGE_CHUNK_SIZE = 8 * 1024 * 1024;
 
 // ── WASM singleton (survives warm invocations) ────────────────────────────────
 let wasmReady = false;
@@ -434,12 +434,16 @@ function fetchUpstream(url, redirects = 0, extraHeaders = {}) {
 }
 
 function upstreamRequestHeaders(url, eventHeaders) {
+  const isFile = getStreamType(url) === "file";
   const rangeHeader = normalizedRangeHeader(
     eventHeaders.range || eventHeaders.Range,
-    getStreamType(url) === "file",
+    isFile,
   );
   const headers = rangeHeader ? { Range: rangeHeader } : {};
-  if (getStreamType(url) === "file") {
+  if (isFile) {
+    if (!headers.Range) {
+      headers.Range = `bytes=0-${FILE_RANGE_CHUNK_SIZE - 1}`;
+    }
     headers.Referer = REFERER;
     headers.Origin = null;
   }

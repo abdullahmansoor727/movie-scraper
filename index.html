@@ -395,6 +395,7 @@
     var subtitleSyncTimers = [];
     var previewThumbnails = [];
     var mediaMeta = null;
+    var fileProxyBase = (p.get('fileProxyBase') || 'http://127.0.0.1:5050').replace(/\/+$/, '');
 
     function setPlayerRendering(active) {
       document.documentElement.toggleAttribute('data-player-rendering', !!active);
@@ -443,8 +444,30 @@
       return match ? Number(match[1]) : 0;
     }
 
+    function rawFileSource(item) {
+      if (!item) return '';
+      if (item.sourceUrl) return item.sourceUrl;
+      if (item.directUrl) return item.directUrl;
+      var url = item.url || '';
+      var match = String(url).match(/[?&]url=([^&]+)/);
+      return match ? decodeURIComponent(match[1]) : url;
+    }
+
     function filePlaybackUrl(item) {
-      return (item && item.url) || '';
+      var source = rawFileSource(item);
+      if (!source) return '';
+      if (/\/proxy\/file(?:\?|$)/.test(source)) return source;
+      if (!/^https?:/i.test(source)) return source;
+      var proxy = new URL('/proxy/file', fileProxyBase);
+      proxy.searchParams.set('url', source);
+      return proxy.href;
+    }
+
+    function sourceAtTime(src, seconds) {
+      var start = Math.max(0, Number(seconds) || 0);
+      if (!src || start < 1) return src;
+      var base = String(src).split('#')[0];
+      return base + '#t=' + start.toFixed(3);
     }
 
     function getFileQualityOptions(variants) {
@@ -469,20 +492,28 @@
       if (!src || !videoEl || currentFileQuality === height) return;
 
       var resumeAt = videoEl.currentTime || 0;
+      var resumeFrom = Math.max(0, resumeAt - 1.5);
       var shouldPlay = !videoEl.paused && !videoEl.ended;
       currentFileQuality = height;
-      videoEl.src = src;
-      videoEl.load();
+
       videoEl.addEventListener('loadedmetadata', function restoreFilePosition() {
         if (resumeAt && Number.isFinite(resumeAt)) {
           try {
             videoEl.currentTime = resumeAt;
           } catch (err) { }
         }
+      }, { once: true });
+      videoEl.addEventListener('seeked', function resumeFilePlayback() {
         if (shouldPlay) {
           playVideo();
         }
       }, { once: true });
+
+      videoEl.src = sourceAtTime(src, resumeFrom);
+      videoEl.load();
+      if (shouldPlay && resumeAt < 1) {
+        videoEl.addEventListener('canplay', playVideo, { once: true });
+      }
     }
 
     function textTracksArray() {
@@ -804,7 +835,9 @@
     function setStreamHelper(stream) {
       var copyButton = document.getElementById('copy-hls');
       currentStreamType = inferStreamType(stream);
-      currentStreamUrl = stream && stream.url ? new URL(stream.url, location.href).href : '';
+      currentStreamUrl = stream && stream.url
+        ? new URL(currentStreamType === 'file' ? filePlaybackUrl(stream) : stream.url, location.href).href
+        : '';
       if (copyButton) {
         var isFile = currentStreamType === 'file';
         copyButton.textContent = isFile ? 'Video URL' : 'HLS URL';
@@ -897,7 +930,7 @@
       } else if (type === 'hls') {
         attachHlsSource(stream.url);
       } else if (type === 'file') {
-        attachDirectSource(stream.url, stream.variants);
+        attachDirectSource(filePlaybackUrl(stream), stream.variants);
       } else {
         showErr('Unsupported stream type');
       }

@@ -3,6 +3,7 @@
   functions = "api"
 
 [dev]
+  autoLaunch = false
   publish = "."
   functions = "api"
 

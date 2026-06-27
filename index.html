@@ -1,941 +1,2615 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Stream</title>
-  <link rel="stylesheet" href="https://cdn.plyr.io/3.8.3/plyr.css" />
-  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest/dist/hls.min.js"></script>
-  <script src="https://cdn.plyr.io/3.8.3/plyr.polyfilled.js"></script>
-  <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-
-    html,
-    body {
-      width: 100%;
-      height: 100%;
-      background: #000;
-      font-family: system-ui, sans-serif;
-      color: #fff;
-      overflow: hidden;
-    }
-
-    html[data-player-rendering],
-    html[data-player-rendering] body {
-      width: 100% !important;
-      min-width: 0 !important;
-      height: 100% !important;
-      min-height: 100% !important;
-      margin: 0 !important;
-      padding: 0 !important;
-      overflow: hidden !important;
-      overscroll-behavior: none !important;
-      background: #000 !important;
-    }
-
-    html[data-player-rendering] body {
-      font-family: system-ui, sans-serif !important;
-    }
-
-    #loader {
-      position: fixed;
-      inset: 0;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 28px;
-      background: #000;
-    }
-
-    #loader-bg {
-      position: absolute;
-      inset: 0;
-      background-position: center;
-      background-size: cover;
-      opacity: 0;
-      transition: opacity .6s ease;
-    }
-
-    .spinner {
-      position: relative;
-      z-index: 1;
-      width: 72px;
-      height: 72px;
-      border: 5px solid rgba(255, 255, 255, .15);
-      border-top-color: #fff;
-      border-radius: 50%;
-      animation: spin .9s linear infinite;
-    }
-
-    @keyframes spin {
-      to {
-        transform: rotate(360deg);
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Stream</title>
+    <link rel="stylesheet" href="https://cdn.plyr.io/3.8.3/plyr.css" />
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest/dist/hls.min.js"></script>
+    <script src="https://cdn.plyr.io/3.8.3/plyr.polyfilled.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
       }
-    }
 
-    #loader-text {
-      position: relative;
-      z-index: 1;
-      font-size: .95rem;
-      color: rgba(255, 255, 255, .6);
-      letter-spacing: .04em;
-      text-shadow: 0 1px 4px #000;
-    }
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        background: #000;
+        font-family: system-ui, sans-serif;
+        color: #fff;
+        overflow: hidden;
+      }
 
-    #player {
-      position: fixed;
-      inset: 0;
-      display: none;
-      background: #000;
-    }
+      html[data-player-rendering],
+      html[data-player-rendering] body {
+        width: 100% !important;
+        min-width: 0 !important;
+        height: 100% !important;
+        min-height: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        overflow: hidden !important;
+        overscroll-behavior: none !important;
+        background: #000 !important;
+      }
 
-    html[data-player-rendering] #player,
-    html[data-player-rendering] #player * {
-      letter-spacing: 0 !important;
-      text-shadow: none !important;
-      text-transform: none !important;
-    }
+      html[data-player-rendering] body {
+        font-family: system-ui, sans-serif !important;
+      }
 
-    #player .plyr {
-      width: 100%;
-      height: 100%;
-      color: #fff;
-      --plyr-color-main: #00b3ff;
-      --plyr-video-background: #000;
-      --plyr-video-control-color: #fff;
-      --plyr-video-control-color-hover: #fff;
-      --plyr-video-control-background-hover: rgba(0, 179, 255, .9);
-      --plyr-menu-background: rgba(17, 24, 39, .98);
-      --plyr-menu-color: #f8fafc;
-      --plyr-menu-border-color: rgba(255, 255, 255, .12);
-      --plyr-menu-shadow: 0 18px 45px rgba(0, 0, 0, .45);
-      --plyr-tooltip-background: rgba(17, 24, 39, .96);
-      --plyr-tooltip-color: #fff;
-      --plyr-control-radius: 6px;
-    }
+      #loader {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 28px;
+        background: #000;
+      }
 
-    #player .plyr button,
-    #player .plyr [role="button"] {
-      border: 0 !important;
-      box-shadow: none;
-      color: inherit !important;
-      font: inherit !important;
-    }
+      #loader-bg {
+        position: absolute;
+        inset: 0;
+        background-position: center;
+        background-size: cover;
+        opacity: 0;
+        transition: opacity 0.6s ease;
+      }
 
-    #player .plyr__control {
-      background-color: transparent !important;
-    }
+      .spinner {
+        position: relative;
+        z-index: 1;
+        width: 72px;
+        height: 72px;
+        border: 5px solid rgba(255, 255, 255, 0.15);
+        border-top-color: #fff;
+        border-radius: 50%;
+        animation: spin 0.9s linear infinite;
+      }
 
-    #player .plyr__control--overlaid {
-      color: #fff !important;
-      background: rgba(0, 179, 255, .95) !important;
-    }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
 
-    #player .plyr__control--overlaid:hover,
-    #player .plyr__control--overlaid:focus-visible {
-      color: #fff !important;
-      background: #38bdf8 !important;
-    }
+      #loader-text {
+        position: relative;
+        z-index: 1;
+        font-size: 0.95rem;
+        color: rgba(255, 255, 255, 0.6);
+        letter-spacing: 0.04em;
+        text-shadow: 0 1px 4px #000;
+      }
 
-    #player .plyr__controls .plyr__control {
-      color: #fff;
-    }
+      #player {
+        position: fixed;
+        inset: 0;
+        display: none;
+        background: #000;
+      }
 
-    #player .plyr__controls .plyr__control:hover,
-    #player .plyr__controls .plyr__control:focus-visible,
-    #player .plyr__controls .plyr__control[aria-expanded="true"] {
-      color: #fff !important;
-      background: rgba(0, 179, 255, .9) !important;
-    }
+      html[data-player-rendering] #player,
+      html[data-player-rendering] #player * {
+        letter-spacing: 0 !important;
+        text-shadow: none !important;
+        text-transform: none !important;
+      }
 
-    #player .plyr__menu__container {
-      color: #f8fafc !important;
-      background: rgba(17, 24, 39, .98) !important;
-      border: 1px solid rgba(255, 255, 255, .12);
-    }
+      #player .plyr {
+        width: 100%;
+        height: 100%;
+        color: #fff;
+        touch-action: manipulation;
+        overflow: visible;
+        --plyr-color-main: #00b3ff;
+        --plyr-video-background: #000;
+        --plyr-video-control-color: #fff;
+        --plyr-video-control-color-hover: #fff;
+        --plyr-video-control-background-hover: rgba(0, 179, 255, 0.9);
+        --plyr-menu-background: rgba(17, 24, 39, 0.98);
+        --plyr-menu-color: #f8fafc;
+        --plyr-menu-border-color: rgba(255, 255, 255, 0.12);
+        --plyr-menu-shadow: 0 18px 45px rgba(0, 0, 0, 0.45);
+        --plyr-tooltip-background: rgba(17, 24, 39, 0.96);
+        --plyr-tooltip-color: #fff;
+        --plyr-control-radius: 6px;
+      }
 
-    #player .plyr__menu__container>div,
-    #player .plyr__menu__container [role="menu"] {
-      color: #f8fafc !important;
-      background: rgba(17, 24, 39, .98) !important;
-    }
+      #player .plyr__captions .plyr__caption {
+        line-height: 0 !important;
+      }
 
-    #player .plyr__menu__container::after {
-      border-top-color: rgba(17, 24, 39, .98) !important;
-    }
+      #player .plyr button,
+      #player .plyr [role="button"] {
+        border: 0 !important;
+        box-shadow: none;
+        color: inherit !important;
+        font: inherit !important;
+      }
 
-    #player .plyr__menu__container .plyr__control {
-      color: #f8fafc !important;
-    }
+      #player .plyr__control {
+        background-color: transparent !important;
+        line-height: 1;
+        vertical-align: middle;
+      }
 
-    #player .plyr__menu__container .plyr__control:hover,
-    #player .plyr__menu__container .plyr__control:focus-visible,
-    #player .plyr__menu__container .plyr__control[role="menuitemradio"][aria-checked="true"] {
-      color: #fff !important;
-      background: rgba(0, 179, 255, .9) !important;
-    }
+      #player .plyr__controls .plyr__control,
+      #player .plyr__control--overlaid {
+        display: inline-flex !important;
+        align-items: center;
+        justify-content: center;
+      }
 
-    #player .plyr__video-wrapper {
-      width: 100%;
-      height: 100%;
-      background: #000;
-    }
+      #player .plyr__controls .plyr__control svg,
+      #player .plyr__control--overlaid svg {
+        margin: auto;
+      }
 
-    video {
-      width: 100%;
-      height: 100%;
-      display: block;
-      object-fit: contain;
-    }
+      #player .plyr__control--overlaid {
+        color: #fff !important;
+        background: rgba(0, 179, 255, 0.95) !important;
+      }
 
-    .plyr__menu__container div[role="menu"] {
-      max-height: 240px;
-      overflow-y: auto;
-    }
+      #player .plyr__control--overlaid:hover,
+      #player .plyr__control--overlaid:focus-visible {
+        color: #fff !important;
+        background: #38bdf8 !important;
+      }
 
-    #stream-actions {
-      position: fixed;
-      top: 12px;
-      right: 12px;
-      z-index: 5;
-      display: none;
-      gap: 8px;
-    }
+      #player .plyr__controls {
+        z-index: 7;
+        overflow: visible;
+      }
 
-    .stream-btn {
-      min-width: 88px;
-      min-height: 36px;
-      padding: 0 12px;
-      border: 1px solid rgba(255, 255, 255, .28);
-      border-radius: 6px;
-      background: rgba(0, 0, 0, .68);
-      color: #fff;
-      font: inherit;
-      font-size: .82rem;
-      cursor: pointer;
-      backdrop-filter: blur(10px);
-    }
+      #player .plyr__controls .plyr__control {
+        color: #fff;
+      }
 
-    .stream-btn:hover {
-      background: rgba(255, 255, 255, .14);
-    }
+      #player .plyr__controls .plyr__control:hover,
+      #player .plyr__controls .plyr__control:focus-visible,
+      #player .plyr__controls .plyr__control[aria-expanded="true"] {
+        color: #fff !important;
+        background: rgba(0, 179, 255, 0.9) !important;
+      }
 
-    .stream-btn:focus-visible {
-      outline: 2px solid #60a5fa;
-      outline-offset: 2px;
-    }
+      /* Plyr settings / captions menus */
+      #player .plyr__menu__container {
+        --plyr-menu-width: 300px;
+        --plyr-menu-max-height: min(75dvh, calc(100dvh - 96px));
+        z-index: 30;
+        box-sizing: border-box;
+        display: flex;
+        flex-direction: column;
+        width: var(--plyr-menu-width) !important;
+        min-width: min(var(--plyr-menu-width), calc(100vw - 24px)) !important;
+        max-width: calc(100vw - 24px) !important;
+        max-height: var(--plyr-menu-max-height) !important;
+        padding: 6px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 10px;
+        color: #f8fafc !important;
+        background: rgba(17, 24, 39, 0.98) !important;
+        box-shadow: 0 18px 45px rgba(0, 0, 0, 0.45);
+        overflow: hidden;
+      }
 
-    #copy-status {
-      position: fixed;
-      top: 56px;
-      right: 12px;
-      z-index: 6;
-      max-width: min(360px, calc(100vw - 24px));
-      padding: 9px 11px;
-      border: 1px solid rgba(255, 255, 255, .18);
-      border-radius: 6px;
-      background: rgba(0, 0, 0, .78);
-      color: rgba(255, 255, 255, .9);
-      font-size: .8rem;
-      opacity: 0;
-      pointer-events: none;
-      transition: opacity .18s ease;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
+      #player .plyr__menu__container::after {
+        border-top-color: rgba(17, 24, 39, 0.98) !important;
+      }
 
-    #copy-status.visible {
-      opacity: 1;
-    }
+      #player .plyr__menu__container > div {
+        display: flex;
+        flex-direction: column;
+        flex: 1 1 auto;
+        min-height: 0;
+        width: 100% !important;
+        max-width: 100% !important;
+        max-height: 100% !important;
+        background: transparent !important;
+        overflow: hidden !important;
+      }
 
-    @media (max-width: 600px) {
+      #player .plyr__menu__container [role="menu"] {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        flex: 1 1 auto;
+        min-height: 0;
+        width: 100%;
+        max-height: 100%;
+        margin: 0;
+        padding: 0;
+        overflow-x: hidden;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: thin;
+        scrollbar-color: rgba(255, 255, 255, 0.28) transparent;
+      }
+
+      #player .plyr__menu__container [role="menu"]::-webkit-scrollbar {
+        width: 6px;
+      }
+
+      #player .plyr__menu__container [role="menu"]::-webkit-scrollbar-thumb {
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.28);
+      }
+
+      #player .plyr__menu__container [role="menu"]::-webkit-scrollbar-track {
+        background: transparent;
+      }
+
+      #player .plyr__menu__container .plyr__control {
+        display: flex !important;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        width: 100% !important;
+        min-width: 0;
+        min-height: 42px;
+        padding: 10px 12px !important;
+        border-radius: 8px;
+        color: #f8fafc !important;
+        white-space: normal;
+        overflow: visible;
+        text-overflow: unset;
+      }
+
+      #player .plyr__menu__container .plyr__control > span {
+        min-width: 0;
+        overflow: visible;
+        text-overflow: unset;
+        white-space: nowrap;
+      }
+
+      #player .plyr__menu__container .plyr__menu__value,
+      #player .plyr__menu__container .plyr__control > span + span {
+        flex: 1 1 auto;
+        margin-left: auto;
+        padding-left: 12px;
+        text-align: right;
+        color: rgba(248, 250, 252, 0.72);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      #player .plyr__menu__container .plyr__control:hover,
+      #player .plyr__menu__container .plyr__control:focus-visible,
+      #player
+        .plyr__menu__container
+        .plyr__control[role="menuitemradio"][aria-checked="true"] {
+        color: #fff !important;
+        background: rgba(0, 179, 255, 0.9) !important;
+      }
+
+      #player .plyr__menu__container .plyr__control:hover .plyr__menu__value,
+      #player
+        .plyr__menu__container
+        .plyr__control[aria-checked="true"]
+        .plyr__menu__value,
+      #player
+        .plyr__menu__container
+        .plyr__control:hover
+        > span
+        + span {
+        color: #fff !important;
+      }
+
+      #player .plyr__menu__container .plyr__control--back {
+        margin-bottom: 4px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      }
+
+      #player .plyr__video-wrapper {
+        width: 100%;
+        height: 100%;
+        background: #000;
+      }
+
+      video {
+        width: 100%;
+        height: 100%;
+        display: block;
+        object-fit: contain;
+        touch-action: manipulation;
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      #mobile-seek-feedback {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        z-index: 30;
+        width: 74px;
+        height: 74px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        border-radius: 50%;
+        background: rgba(0, 0, 0, 0.82);
+        color: #fff;
+        font-size: 0.95rem;
+        font-weight: 800;
+        line-height: 1;
+        opacity: 0;
+        pointer-events: none;
+        transform: translate(-50%, -50%) scale(0.88);
+        transition:
+          opacity 0.16s ease,
+          transform 0.16s ease;
+        backdrop-filter: blur(12px);
+        box-shadow: 0 12px 34px rgba(0, 0, 0, 0.5);
+      }
+
+      #mobile-seek-feedback.visible {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1);
+      }
+
+      #buffering-indicator {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        z-index: 29;
+        width: 58px;
+        height: 58px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50%;
+        background: rgba(0, 0, 0, 0.58);
+        opacity: 0;
+        pointer-events: none;
+        transform: translate(-50%, -50%) scale(0.94);
+        transition:
+          opacity 0.16s ease,
+          transform 0.16s ease;
+        backdrop-filter: blur(10px);
+      }
+
+      #buffering-indicator.visible {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1);
+      }
+
+      #buffering-indicator::before {
+        width: 30px;
+        height: 30px;
+        border: 3px solid rgba(255, 255, 255, 0.28);
+        border-top-color: #fff;
+        border-radius: 50%;
+        content: "";
+        animation: spin 0.8s linear infinite;
+      }
+
       #stream-actions {
-        left: 12px;
+        position: fixed;
+        top: 12px;
         right: 12px;
+        z-index: 5;
+        display: none;
+        gap: 8px;
       }
 
       .stream-btn {
-        flex: 1;
+        min-width: 88px;
+        min-height: 36px;
+        padding: 0 12px;
+        border: 1px solid rgba(255, 255, 255, 0.28);
+        border-radius: 6px;
+        background: rgba(0, 0, 0, 0.68);
+        color: #fff;
+        font: inherit;
+        font-size: 0.82rem;
+        cursor: pointer;
+        backdrop-filter: blur(10px);
+      }
+
+      .stream-btn:hover {
+        background: rgba(255, 255, 255, 0.14);
+      }
+
+      .stream-btn:focus-visible {
+        outline: 2px solid #60a5fa;
+        outline-offset: 2px;
       }
 
       #copy-status {
-        left: 12px;
+        position: fixed;
+        top: 56px;
         right: 12px;
+        z-index: 6;
+        max-width: min(360px, calc(100vw - 24px));
+        padding: 9px 11px;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        border-radius: 6px;
+        background: rgba(0, 0, 0, 0.78);
+        color: rgba(255, 255, 255, 0.9);
+        font-size: 0.8rem;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.18s ease;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
-    }
 
-    #usage {
-      position: fixed;
-      inset: 0;
-      display: none;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      text-align: center;
-      background: #000;
-      gap: 10px;
-    }
-
-    #usage p {
-      font-size: 1.05rem;
-      color: rgba(255, 255, 255, .65);
-      line-height: 2;
-    }
-
-    #err {
-      position: fixed;
-      inset: 0;
-      display: none;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      text-align: center;
-      background: #000;
-    }
-
-    #err-title {
-      font-size: 2.4rem;
-      font-weight: 700;
-      color: #fff;
-      margin-bottom: 18px;
-    }
-
-    #err-link {
-      font-size: 1.1rem;
-      color: #60a5fa;
-      text-decoration: underline;
-      cursor: pointer;
-    }
-
-    #err-link:hover {
-      color: #93c5fd;
-    }
-
-    #err-detail {
-      position: absolute;
-      bottom: 28px;
-      left: 50%;
-      transform: translateX(-50%);
-      font-size: .78rem;
-      color: rgba(255, 255, 255, .35);
-      white-space: nowrap;
-      max-width: 90vw;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-  </style>
-</head>
-
-<body>
-
-  <div id="loader">
-    <div id="loader-bg"></div>
-    <div class="spinner"></div>
-    <div id="loader-text">Loading stream...</div>
-  </div>
-
-  <div id="usage">
-    <p>
-      <span style="color:#fff;font-size:1.2rem">Stream</span><br><br>
-      <code style="color:rgba(255,255,255,.8)">?id=550</code> &nbsp;— movie<br>
-      <code style="color:rgba(255,255,255,.8)">?id=456&amp;s=1&amp;e=1</code> &nbsp;— TV episode
-    </p>
-  </div>
-
-  <div id="err">
-    <div id="err-title">Error Occurred</div>
-    <a id="err-link" href="#">Try vidsrc.xyz instead?</a>
-    <div id="err-detail"></div>
-  </div>
-
-  <div id="player">
-    <video id="v" controls playsinline preload="auto"></video>
-  </div>
-
-  <div id="stream-actions" aria-label="Stream actions">
-    <button id="copy-hls" class="stream-btn" type="button" title="Copy proxied stream URL">Stream URL</button>
-  </div>
-  <div id="copy-status" role="status" aria-live="polite"></div>
-
-  <script>
-    var TMDB_KEY = '3a73619bbb8fc6d47742d1b5b2b707b5';
-
-    var MESSAGES = [
-      'Loading stream...', 'Contacting the mothership...', 'Bribing the servers...',
-      'Untangling the cables...', 'Asking nicely...', 'Decoding the matrix...',
-      'Warming up the hamsters...', 'Negotiating with the cloud...', 'Almost there...',
-      'Convincing pixels to move...', 'Poking the API...', 'Summoning bandwidth...',
-      'Greasing the pipes...', 'Waking up the interns...', 'Stealing the stream (legally)...'
-    ];
-    var msgEl = document.getElementById('loader-text');
-    var msgIdx = 0;
-    var msgTimer = setInterval(function () {
-      msgIdx = (msgIdx + 1) % MESSAGES.length;
-      msgEl.textContent = MESSAGES[msgIdx];
-    }, 2200);
-
-    var p = new URLSearchParams(location.search);
-    var id = p.get('id'), s = p.get('s'), e = p.get('e');
-    var currentStreamUrl = '';
-    var currentStreamType = '';
-    var copyStatusTimer = null;
-    var hls = null;
-    var plyr = null;
-    var videoEl = document.getElementById('v');
-    var hlsQualityByHeight = {};
-    var fileQualityByHeight = {};
-    var currentFileQuality = null;
-    var subtitleSyncTimers = [];
-    var previewThumbnails = [];
-    var mediaMeta = null;
-    var fileProxyBase = (p.get('fileProxyBase') || 'http://127.0.0.1:5050').replace(/\/+$/, '');
-
-    function setPlayerRendering(active) {
-      document.documentElement.toggleAttribute('data-player-rendering', !!active);
-      document.body.toggleAttribute('data-player-rendering', !!active);
-    }
-
-    function setQuality(value) {
-      var height = Number(value);
-      if (currentStreamType === 'file') {
-        setFileQuality(height);
-        return;
+      #copy-status.visible {
+        opacity: 1;
       }
-      if (!hls) return;
-      if (height === 0) {
-        hls.currentLevel = -1;
-        return;
-      }
-      if (typeof hlsQualityByHeight[height] === 'number') {
-        hls.currentLevel = hlsQualityByHeight[height];
-      }
-    }
 
-    function getQualityOptions() {
-      if (!hls || !hls.levels || !hls.levels.length) return [];
-      hlsQualityByHeight = {};
-      hls.levels.forEach(function (level, index) {
-        var height = Number(level.height);
-        if (!height) return;
-        if (
-          typeof hlsQualityByHeight[height] !== 'number' ||
-          (level.bitrate || 0) > (hls.levels[hlsQualityByHeight[height]].bitrate || 0)
-        ) {
-          hlsQualityByHeight[height] = index;
+      @media (max-width: 600px) {
+        #stream-actions {
+          left: 12px;
+          right: 12px;
         }
-      });
-      return Object.keys(hlsQualityByHeight).map(Number).sort(function (a, b) {
-        return b - a;
-      });
-    }
 
-    function getVariantHeight(variant, index) {
-      var height = Number(variant && variant.height);
-      if (height) return height;
-      var label = String((variant && variant.label) || '');
-      var match = label.match(/(\d{3,4})/);
-      return match ? Number(match[1]) : 0;
-    }
-
-    function rawFileSource(item) {
-      if (!item) return '';
-      if (item.sourceUrl) return item.sourceUrl;
-      if (item.directUrl) return item.directUrl;
-      var url = item.url || '';
-      var match = String(url).match(/[?&]url=([^&]+)/);
-      return match ? decodeURIComponent(match[1]) : url;
-    }
-
-    function filePlaybackUrl(item) {
-      var source = rawFileSource(item);
-      if (!source) return '';
-      if (/\/proxy\/file(?:\?|$)/.test(source)) return source;
-      if (!/^https?:/i.test(source)) return source;
-      var proxy = new URL('/proxy/file', fileProxyBase);
-      proxy.searchParams.set('url', source);
-      return proxy.href;
-    }
-
-    function sourceAtTime(src, seconds) {
-      var start = Math.max(0, Number(seconds) || 0);
-      if (!src || start < 1) return src;
-      var base = String(src).split('#')[0];
-      return base + '#t=' + start.toFixed(3);
-    }
-
-    function getFileQualityOptions(variants) {
-      fileQualityByHeight = {};
-      (variants || []).forEach(function (variant, index) {
-        if (!filePlaybackUrl(variant)) return;
-        var height = getVariantHeight(variant, index);
-        if (!height) return;
-        if (!fileQualityByHeight[height]) {
-          fileQualityByHeight[height] = variant;
+        .stream-btn {
+          flex: 1;
         }
-      });
-      return Object.keys(fileQualityByHeight).map(Number).sort(function (a, b) {
-        return b - a;
-      });
-    }
 
-    function setFileQuality(value) {
-      var height = Number(value);
-      var variant = fileQualityByHeight[height];
-      var src = filePlaybackUrl(variant);
-      if (!src || !videoEl || currentFileQuality === height) return;
+        #copy-status {
+          left: 12px;
+          right: 12px;
+        }
+      }
 
-      var resumeAt = videoEl.currentTime || 0;
-      var resumeFrom = Math.max(0, resumeAt - 1.5);
-      var shouldPlay = !videoEl.paused && !videoEl.ended;
-      currentFileQuality = height;
+      @media (max-width: 760px), (pointer: coarse) {
+        #player .plyr__menu__container {
+          --plyr-menu-width: min(320px, calc(100vw - 24px));
+          --plyr-menu-max-height: min(
+            70dvh,
+            calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 88px)
+          );
+        }
 
-      videoEl.addEventListener('loadedmetadata', function restoreFilePosition() {
-        if (resumeAt && Number.isFinite(resumeAt)) {
+        #player .plyr__menu__container .plyr__control {
+          min-height: 46px;
+          padding: 12px 14px !important;
+        }
+
+        #player .plyr__menu__container .plyr__control:hover,
+        #player .plyr__menu__container .plyr__control:focus-visible,
+        #player
+          .plyr__menu__container
+          .plyr__control[role="menuitemradio"][aria-checked="true"] {
+          background: rgba(0, 179, 255, 0.22) !important;
+        }
+
+        #player .plyr__control--overlaid {
+          width: 64px !important;
+          height: 64px !important;
+          padding: 18px !important;
+        }
+
+        #player .plyr__controls {
+          display: flex;
+          flex-wrap: nowrap;
+          align-items: center;
+          gap: 8px;
+          padding: 8px max(10px, env(safe-area-inset-right))
+            calc(10px + env(safe-area-inset-bottom))
+            max(10px, env(safe-area-inset-left));
+        }
+
+        #player .plyr__controls .plyr__control {
+          width: 40px;
+          min-width: 40px;
+          height: 40px;
+          min-height: 40px;
+          padding: 9px !important;
+          background: transparent !important;
+          flex: 0 0 40px;
+        }
+
+        #player .plyr__controls .plyr__control:hover,
+        #player .plyr__controls .plyr__control:focus,
+        #player .plyr__controls .plyr__control:focus-visible,
+        #player .plyr__controls .plyr__control[aria-expanded="true"] {
+          background: transparent !important;
+        }
+
+        #player .plyr__controls .plyr__control svg {
+          width: 20px;
+          height: 20px;
+        }
+
+        #player .plyr__controls [data-plyr="rewind"],
+        #player .plyr__controls [data-plyr="fast-forward"] {
+          display: none !important;
+        }
+
+        #player .plyr__progress__container {
+          flex: 1 1 auto;
+          min-width: 92px;
+          padding: 0 2px;
+        }
+
+        #player .plyr__progress input[type="range"] {
+          min-height: 24px;
+        }
+
+        #player .plyr__time {
+          font-size: 0.76rem;
+          white-space: nowrap;
+          flex: 0 0 auto;
+        }
+
+        #player .plyr__time--duration,
+        #player .plyr__time--duration::before {
+          display: none !important;
+        }
+
+        #player .plyr__captions {
+          bottom: calc(64px + env(safe-area-inset-bottom));
+          padding-inline: 16px;
+        }
+
+        #player .plyr--hide-controls .plyr__captions {
+          bottom: calc(18px + env(safe-area-inset-bottom));
+        }
+
+        #player .plyr__volume,
+        #player .plyr__controls [data-plyr="pip"],
+        #player .plyr__controls [data-plyr="airplay"] {
+          display: none;
+        }
+
+        #mobile-seek-feedback {
+          width: 68px;
+          height: 68px;
+          font-size: 0.9rem;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        #mobile-seek-feedback,
+        #buffering-indicator {
+          transition: none;
+        }
+
+        #buffering-indicator::before {
+          animation: none;
+        }
+      }
+
+      #usage {
+        position: fixed;
+        inset: 0;
+        display: none;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        background: #000;
+        gap: 10px;
+      }
+
+      #usage p {
+        font-size: 1.05rem;
+        color: rgba(255, 255, 255, 0.65);
+        line-height: 2;
+      }
+
+      #err {
+        position: fixed;
+        inset: 0;
+        display: none;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        background: #000;
+        padding: 24px;
+      }
+
+      #err-title {
+        font-size: 2.4rem;
+        font-weight: 700;
+        color: #fff;
+        margin-bottom: 18px;
+      }
+
+      #err-message {
+        max-width: 520px;
+        color: rgba(255, 255, 255, 0.72);
+        font-size: 1.08rem;
+        line-height: 1.55;
+        margin-bottom: 20px;
+      }
+
+      #err-retry {
+        appearance: none;
+        border: 1px solid rgba(255, 255, 255, 0.22);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.08);
+        color: #fff;
+        cursor: pointer;
+        font-size: 1rem;
+        font-weight: 600;
+        margin-bottom: 18px;
+        padding: 10px 18px;
+      }
+
+      #err-retry:hover {
+        background: rgba(255, 255, 255, 0.14);
+      }
+
+      #err-detail {
+        width: min(620px, 90vw);
+        font-size: 0.82rem;
+        color: rgba(255, 255, 255, 0.58);
+        text-align: left;
+      }
+
+      #err-detail summary {
+        cursor: pointer;
+        color: rgba(255, 255, 255, 0.76);
+        text-align: center;
+      }
+
+      #err-debug {
+        margin-top: 12px;
+        padding: 12px;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.06);
+        white-space: pre-wrap;
+        word-break: break-word;
+        max-width: 90vw;
+      }
+      video::cue {
+        background: rgba(0, 0, 0, 0.68);
+        color: #fff;
+        font-size: 1.08rem;
+        text-shadow: none;
+        padding: 2px 6px;
+        border-radius: 4px;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div id="loader">
+      <div id="loader-bg"></div>
+      <div class="spinner"></div>
+      <div id="loader-text">Loading stream...</div>
+    </div>
+
+    <div id="usage">
+      <p>
+        <span style="color: #fff; font-size: 1.2rem">Stream</span><br /><br />
+        <code style="color: rgba(255, 255, 255, 0.8)">?id=550</code> &nbsp;—
+        movie<br />
+        <code style="color: rgba(255, 255, 255, 0.8)"
+          >?id=456&amp;s=1&amp;e=1</code
+        >
+        &nbsp;— TV episode
+      </p>
+    </div>
+
+    <div id="err">
+      <div id="err-title">Error Occurred</div>
+      <div id="err-message"></div>
+      <button id="err-retry" type="button">Try again</button>
+      <details id="err-detail">
+        <summary>Details</summary>
+        <pre id="err-debug"></pre>
+      </details>
+    </div>
+
+    <div id="player">
+      <video id="v" controls playsinline preload="auto"></video>
+      <div
+        id="mobile-seek-feedback"
+        aria-live="polite"
+        aria-atomic="true"
+      ></div>
+      <div
+        id="buffering-indicator"
+        aria-label="Buffering"
+        aria-live="polite"
+      ></div>
+    </div>
+
+    <div id="stream-actions" aria-label="Stream actions">
+      <button
+        id="copy-hls"
+        class="stream-btn"
+        type="button"
+        title="Copy proxied stream URL"
+      >
+        Stream URL
+      </button>
+    </div>
+    <div id="copy-status" role="status" aria-live="polite"></div>
+
+    <script>
+      var TMDB_KEY = "3a73619bbb8fc6d47742d1b5b2b707b5";
+
+      var MESSAGES = [
+        "Loading stream...",
+        "Contacting the mothership...",
+        "Bribing the servers...",
+        "Untangling the cables...",
+        "Asking nicely...",
+        "Decoding the matrix...",
+        "Warming up the hamsters...",
+        "Negotiating with the cloud...",
+        "Almost there...",
+        "Convincing pixels to move...",
+        "Poking the API...",
+        "Summoning bandwidth...",
+        "Greasing the pipes...",
+        "Waking up the interns...",
+        "Stealing the stream (legally)...",
+      ];
+      var msgEl = document.getElementById("loader-text");
+      var msgIdx = 0;
+      var msgTimer = setInterval(function () {
+        msgIdx = (msgIdx + 1) % MESSAGES.length;
+        msgEl.textContent = MESSAGES[msgIdx];
+      }, 2200);
+
+      var p = new URLSearchParams(location.search);
+      var id = p.get("id"),
+        s = p.get("s"),
+        e = p.get("e");
+      var isEmbed = p.get("embed") === "1";
+      var mediaType = s ? "tv" : "movie";
+      var currentStreamUrl = "";
+      var currentStreamType = "";
+      var copyStatusTimer = null;
+      var hls = null;
+      var plyr = null;
+      var videoEl = document.getElementById("v");
+      var hlsQualityByHeight = {};
+      var fileQualityByHeight = {};
+      var currentFileQuality = null;
+      var subtitleSyncTimers = [];
+      var previewThumbnails = [];
+      var mediaMeta = null;
+      var streamData = null;
+      var progressTimer = null;
+      var resumeApplied = false;
+      var resumeStarted = false;
+      var suppressSubtitlePreference = false;
+      var fileProxyBase = (
+        p.get("fileProxyBase") ||
+        location.protocol + "//" + location.hostname + ":5050"
+      ).replace(/\/+$/, "");
+      var STORAGE_TTL = 90 * 24 * 60 * 60 * 1000;
+      var RESUME_REMAINING_SECONDS = 120;
+      var WATCHED_PERCENT = 90;
+      var DOUBLE_TAP_MS = 340;
+      var DOUBLE_TAP_DISTANCE = 96;
+      var EDGE_TAP_ZONE = 0.36;
+      var MOBILE_SEEK_SECONDS = 10;
+      var mobileGestureTap = { time: 0, zone: "", x: 0, y: 0 };
+      var mobileSeekFeedbackTimer = null;
+      var bufferingIndicatorTimer = null;
+      var suppressNextFullscreenToggleUntil = 0;
+      var wakeLock = null;
+      var hlsRecoveryTimer = null;
+      var hlsRecovery = { attempts: 0, startedAt: 0, lastError: null };
+      var HLS_RECOVERY_BASE_DELAY = 900;
+      var HLS_RECOVERY_MAX_DELAY = 30000;
+      var HLS_RECOVERY_MAX_ATTEMPTS = 7;
+      var HLS_RECOVERY_MAX_ELAPSED = 150000;
+      var HLS_NON_FATAL_RETRY_THRESHOLD = 3;
+      var playbackCheckpoint = 0;
+      var suppressProgressUntil = 0;
+      var hlsRecovering = false;
+      var captionOffSaveTimer = null;
+      var subtitlePreferenceRetryTimer = null;
+      var plyrMenuLayoutWired = false;
+
+      function numericParam(value) {
+        var number = Number(value);
+        return Number.isFinite(number) ? number : null;
+      }
+
+      function storageSuffix() {
+        return mediaType === "tv"
+          ? "tv:" + id + ":" + (s || "1") + ":" + (e || "1")
+          : "movie:" + id;
+      }
+
+      function progressKey() {
+        return "progress:" + storageSuffix();
+      }
+
+      function qualityKey() {
+        return "preference:quality";
+      }
+
+      function subtitleKey() {
+        return "preference:subtitle";
+      }
+
+      function speedKey() {
+        return "preference:speed";
+      }
+
+      function captionFontKey() {
+        return "preference:caption-font-size";
+      }
+
+      function savedPlaybackSpeed() {
+        var saved = safeRead(speedKey());
+        var rate = saved && Number(saved.rate);
+        if (!Number.isFinite(rate) || rate <= 0) return 1;
+        return rate;
+      }
+
+      function savePlaybackSpeed(rate) {
+        if (!Number.isFinite(rate) || rate <= 0) return;
+        safeWrite(speedKey(), { rate: rate, updatedAt: Date.now() });
+      }
+
+      function savedQualityHeight(qualityOptions, includeAuto) {
+        var saved = safeRead(qualityKey());
+        var height = saved && Number(saved.height);
+        if (!Number.isFinite(height)) return null;
+        if (includeAuto && height === 0) return 0;
+        if ((qualityOptions || []).indexOf(height) >= 0) return height;
+        return null;
+      }
+
+      function saveQualityPreference(height) {
+        if (!Number.isFinite(height)) return;
+        safeWrite(qualityKey(), { height: height, updatedAt: Date.now() });
+      }
+
+      function applyCaptionFontSize() {
+        var saved = safeRead(captionFontKey());
+        var rem = saved && Number(saved.rem);
+        if (!Number.isFinite(rem)) return;
+        var captions = document.querySelector("#player .plyr__captions");
+        if (captions) captions.style.fontSize = rem + "rem";
+      }
+
+      function safeRead(key) {
+        try {
+          return JSON.parse(localStorage.getItem(key) || "null");
+        } catch (err) {
+          return null;
+        }
+      }
+
+      function safeWrite(key, value) {
+        try {
+          localStorage.setItem(key, JSON.stringify(value));
+        } catch (err) {}
+      }
+
+      function safeRemove(key) {
+        try {
+          localStorage.removeItem(key);
+        } catch (err) {}
+      }
+
+      function basePayload() {
+        return {
+          id: id || "",
+          mediaType: mediaType,
+          season: mediaType === "tv" ? numericParam(s || "1") : null,
+          episode: mediaType === "tv" ? numericParam(e || "1") : null,
+        };
+      }
+
+      function postPlayerEvent(type, payload) {
+        var event = {
+          type: "movie-scraper:" + type,
+          payload: Object.assign(basePayload(), payload || {}),
+        };
+        try {
+          window.parent && window.parent.postMessage(event, "*");
+        } catch (err) {}
+      }
+
+      function truncateValue(value) {
+        var text = String(value || "");
+        if (!text) return "";
+        return text.length > 180
+          ? text.slice(0, 140) + "..." + text.slice(-24)
+          : text;
+      }
+
+      function isFiniteMediaDuration() {
+        return (
+          videoEl && Number.isFinite(videoEl.duration) && videoEl.duration > 0
+        );
+      }
+
+      function showMobileSeekFeedback(seconds, zone) {
+        var feedback = document.getElementById("mobile-seek-feedback");
+        if (!feedback) return;
+        var container =
+          feedback.parentElement || document.getElementById("player");
+        var rect = container && container.getBoundingClientRect();
+        var x =
+          rect && rect.width
+            ? rect.width * (zone === "backward" ? 0.24 : 0.76)
+            : window.innerWidth * 0.5;
+        var y =
+          rect && rect.height ? rect.height * 0.5 : window.innerHeight * 0.5;
+        feedback.style.left = x + "px";
+        feedback.style.top = y + "px";
+        feedback.classList.remove("visible");
+        feedback.textContent =
+          (seconds > 0 ? "+" : "-") + Math.abs(seconds) + "s";
+        feedback.offsetHeight;
+        feedback.classList.add("visible");
+        clearTimeout(mobileSeekFeedbackTimer);
+        mobileSeekFeedbackTimer = setTimeout(function () {
+          feedback.classList.remove("visible");
+        }, 620);
+      }
+
+      function seekByGesture(seconds, zone) {
+        if (!videoEl || !Number.isFinite(videoEl.currentTime)) return;
+        var nextTime = (videoEl.currentTime || 0) + seconds;
+        if (isFiniteMediaDuration()) {
+          nextTime = Math.min(videoEl.duration, nextTime);
+        }
+        nextTime = Math.max(0, nextTime);
+        try {
+          videoEl.currentTime = nextTime;
+        } catch (err) {
+          return;
+        }
+        if (navigator.vibrate) {
           try {
-            videoEl.currentTime = resumeAt;
-          } catch (err) { }
+            navigator.vibrate(12);
+          } catch (err) {}
         }
-      }, { once: true });
-      videoEl.addEventListener('seeked', function resumeFilePlayback() {
-        if (shouldPlay) {
-          playVideo();
-        }
-      }, { once: true });
-
-      videoEl.src = sourceAtTime(src, resumeFrom);
-      videoEl.load();
-      if (shouldPlay && resumeAt < 1) {
-        videoEl.addEventListener('canplay', playVideo, { once: true });
-      }
-    }
-
-    function textTracksArray() {
-      return videoEl && videoEl.textTracks ? Array.prototype.slice.call(videoEl.textTracks) : [];
-    }
-
-    function findHlsSubtitleTrack(textTrack) {
-      if (!hls || !hls.subtitleTracks || !textTrack) return -1;
-      var label = (textTrack.label || '').toLowerCase();
-      var language = (textTrack.language || '').toLowerCase();
-      var subtitleTracks = hls.subtitleTracks || [];
-      var byLanguageAndLabel = subtitleTracks.findIndex(function (track) {
-        return (track.lang || '').toLowerCase() === language && (track.name || '').toLowerCase() === label;
-      });
-      if (byLanguageAndLabel >= 0) return byLanguageAndLabel;
-
-      var byLanguage = subtitleTracks.findIndex(function (track) {
-        return language && (track.lang || '').toLowerCase() === language;
-      });
-      if (byLanguage >= 0) return byLanguage;
-
-      return subtitleTracks.findIndex(function (track) {
-        return label && (track.name || '').toLowerCase() === label;
-      });
-    }
-
-    function syncActiveSubtitleTrack() {
-      var activeTrack = null;
-      var tracks = textTracksArray();
-
-      // 1. Identify which track the user selected via Plyr
-      tracks.forEach(function (track) {
-        if (track.mode === 'showing' && !activeTrack) {
-          activeTrack = track;
-        }
-      });
-
-      if (!hls || !hls.subtitleTracks || !hls.subtitleTracks.length) return;
-
-      // 2. If no track is showing, tell HLS to mute text streams
-      if (!activeTrack) {
-        if (hls.subtitleTrack !== -1) {
-          hls.subtitleTrack = -1;
-        }
-        return;
+        suppressNextFullscreenToggleUntil = Date.now() + 700;
+        showMobileSeekFeedback(seconds, zone);
+        emitProgress(false);
       }
 
-      // 3. Match the track label/language up with HLS's manifest tracks
-      var hlsSubtitleTrack = findHlsSubtitleTrack(activeTrack);
-      if (hlsSubtitleTrack >= 0 && hls.subtitleTrack !== hlsSubtitleTrack) {
-        hls.subtitleTrack = hlsSubtitleTrack;
-      } else if (hlsSubtitleTrack < 0 && hls.subtitleTrack !== -1) {
-        hls.subtitleTrack = -1;
-      }
-    }
-
-    function clearSubtitleSyncTimers() {
-      subtitleSyncTimers.forEach(function (timer) {
-        clearTimeout(timer);
-      });
-      subtitleSyncTimers = [];
-    }
-
-    function scheduleSubtitleSync() {
-      clearSubtitleSyncTimers();
-      [0, 80, 250].forEach(function (delay) {
-        subtitleSyncTimers.push(setTimeout(syncActiveSubtitleTrack, delay));
-      });
-    }
-
-    function disableSubtitles() {
-      clearSubtitleSyncTimers();
-      textTracksArray().forEach(function (track) {
-        // Changed from 'disabled' to 'hidden' so Plyr's menu can still read them
-        track.mode = 'hidden';
-      });
-      if (hls && hls.subtitleTracks && hls.subtitleTracks.length) {
-        hls.subtitleTrack = -1;
-      }
-    }
-
-
-    function wireSubtitleControls() {
-      if (!videoEl || videoEl.dataset.subtitleControlsWired) return;
-      videoEl.dataset.subtitleControlsWired = 'true';
-      if (videoEl.textTracks) {
-        if (videoEl.textTracks.addEventListener) {
-          videoEl.textTracks.addEventListener('change', scheduleSubtitleSync);
-        }
-        videoEl.textTracks.onchange = scheduleSubtitleSync;
-      }
-    }
-
-    function initPlayer(options) {
-      if (plyr || !videoEl || !window.Plyr) return;
-      options = options || {};
-      var qualityOptions = options.qualityOptions || [];
-      var qualityValues = options.includeAuto ? [0].concat(qualityOptions) : qualityOptions;
-      var defaultQuality = typeof options.defaultQuality === 'number'
-        ? options.defaultQuality
-        : qualityValues[0];
-      var playerConfig = {
-        controls: [
-          'play-large',
-          'rewind',
-          'play',
-          'fast-forward',
-          'progress',
-          'current-time',
-          'duration',
-          'mute',
-          'volume',
-          'captions',
-          'settings',
-          'pip',
-          'airplay',
-          'fullscreen'
-        ],
-        settings: qualityOptions.length ? ['captions', 'quality', 'speed'] : ['captions', 'speed'],
-        i18n: {
-          qualityLabel: options.includeAuto ? { 0: 'Auto' } : {}
-        },
-        seekTime: 10,
-        captions: { active: false, language: 'auto', update: true },
-        keyboard: { focused: true, global: true },
-        tooltips: { controls: true, seek: true }
-      };
-
-      if (qualityOptions.length) {
-        playerConfig.quality = {
-          default: defaultQuality,
-          options: qualityValues,
-          forced: true,
-          onChange: setQuality
-        };
-      }
-
-      if (previewThumbnails.length) {
-        playerConfig.previewThumbnails = {
-          enabled: true,
-          src: previewThumbnails
-        };
-      }
-
-      plyr = new Plyr(videoEl, playerConfig);
-
-      wireSubtitleControls();
-      disableSubtitles();
-
-      plyr.on('captionsenabled', scheduleSubtitleSync);
-      plyr.on('captionsdisabled', scheduleSubtitleSync);
-
-      plyr.on('languagechange', function () {
-        var tracks = textTracksArray();
-        var plyrLang = (plyr.language || '').toLowerCase();
-
-        if (plyrLang && plyrLang !== 'auto') {
-          tracks.forEach(function (track) {
-            var trackLang = (track.language || '').toLowerCase();
-            if (trackLang === plyrLang) {
-              track.mode = 'showing';
-            } else {
-              track.mode = 'hidden';
+      function setBuffering(active) {
+        var indicator = document.getElementById("buffering-indicator");
+        if (!indicator) return;
+        clearTimeout(bufferingIndicatorTimer);
+        if (active) {
+          bufferingIndicatorTimer = setTimeout(function () {
+            if (videoEl && !videoEl.paused && !videoEl.ended) {
+              indicator.classList.add("visible");
             }
-          });
-        }
-        scheduleSubtitleSync();
-      });
-    }
-
-    function setCaptionTracks(tracks) {
-      if (!videoEl) return;
-      Array.prototype.slice.call(videoEl.querySelectorAll('track[data-stream-track]')).forEach(function (track) {
-        track.remove();
-      });
-      (tracks || []).forEach(function (track, index) {
-        if (!track || !track.src) return;
-        var el = document.createElement('track');
-        el.setAttribute('data-stream-track', '');
-        el.kind = track.kind || 'subtitles';
-        el.label = track.label || 'Subtitle ' + (index + 1);
-        el.srclang = track.srclang || 'und';
-        el.src = track.src;
-        el.default = false;
-        videoEl.appendChild(el);
-      });
-      disableSubtitles();
-    }
-
-    function setPreviewThumbnails(tracks) {
-      previewThumbnails = (tracks || []).filter(Boolean);
-    }
-
-    function playVideo() {
-      if (videoEl) {
-        var playPromise = plyr ? plyr.play() : videoEl.play();
-        if (playPromise && playPromise.catch) {
-          playPromise.catch(function () { });
+          }, 180);
+        } else {
+          indicator.classList.remove("visible");
         }
       }
-    }
 
-    function attachHlsSource(src) {
-      if (!videoEl) return;
-      currentStreamType = 'hls';
-      fileQualityByHeight = {};
-      currentFileQuality = null;
-      if (hls) {
-        hls.destroy();
-        hls = null;
-      }
-      videoEl.removeAttribute('src');
-      videoEl.load();
-      if (window.Hls && Hls.isSupported()) {
-        hls = new Hls({ enableWorker: true });
-        hls.attachMedia(videoEl);
-        hls.on(Hls.Events.MEDIA_ATTACHED, function () {
-          hls.loadSource(src);
-        });
-        hls.on(Hls.Events.MANIFEST_PARSED, function () {
-          hls.subtitleTrack = -1;
-          initPlayer({
-            qualityOptions: getQualityOptions(),
-            includeAuto: true,
-            defaultQuality: 0
-          });
-          disableSubtitles();
-          playVideo();
-        });
-        hls.on(Hls.Events.ERROR, function (event, data) {
-          if (data.fatal) {
-            showErr('HLS playback error: ' + (data.details || data.type));
-            hls.destroy();
-            hls = null;
+      function ensurePlayerOverlaysInPlyr() {
+        var container = plyr && plyr.elements && plyr.elements.container;
+        if (!container) return;
+        ["mobile-seek-feedback", "buffering-indicator"].forEach(function (id) {
+          var el = document.getElementById(id);
+          if (el && el.parentElement !== container) {
+            container.appendChild(el);
           }
         });
-      } else if (videoEl.canPlayType('application/vnd.apple.mpegurl')) {
-        initPlayer();
+      }
+
+      function fixPlyrMenuLayout() {
+        var viewportPad = 12;
+        var controls = document.querySelector("#player .plyr__controls");
+        var controlsRect = controls
+          ? controls.getBoundingClientRect()
+          : { top: window.innerHeight * 0.82, bottom: window.innerHeight };
+        var availableAbove = controlsRect.top - viewportPad - 8;
+        var maxHeight = Math.max(
+          140,
+          Math.min(availableAbove, window.innerHeight - viewportPad * 2),
+        );
+        maxHeight = Math.floor(maxHeight);
+
+        var isCoarse =
+          window.matchMedia &&
+          window.matchMedia("(max-width: 760px), (pointer: coarse)").matches;
+        var width = Math.min(
+          isCoarse ? 320 : 300,
+          window.innerWidth - viewportPad * 2,
+        );
+        width = Math.max(260, Math.floor(width));
+
+        document
+          .querySelectorAll("#player .plyr__menu__container")
+          .forEach(function (menu) {
+            menu.style.setProperty("--plyr-menu-width", width + "px");
+            menu.style.setProperty("--plyr-menu-max-height", maxHeight + "px");
+            menu.style.width = width + "px";
+            menu.style.minWidth =
+              Math.min(width, window.innerWidth - viewportPad * 2) + "px";
+            menu.style.maxWidth = window.innerWidth - viewportPad * 2 + "px";
+            menu.style.maxHeight = maxHeight + "px";
+
+            var rect = menu.getBoundingClientRect();
+            if (rect.height <= 0 && rect.width <= 0) return;
+
+            if (rect.left < viewportPad) {
+              menu.style.left = viewportPad + "px";
+              menu.style.right = "auto";
+            } else if (rect.right > window.innerWidth - viewportPad) {
+              menu.style.left =
+                Math.max(viewportPad, window.innerWidth - viewportPad - width) +
+                "px";
+              menu.style.right = "auto";
+            }
+
+            rect = menu.getBoundingClientRect();
+            if (rect.top < viewportPad) {
+              var reduced = Math.max(
+                120,
+                maxHeight - (viewportPad - rect.top) - 8,
+              );
+              menu.style.maxHeight = reduced + "px";
+              menu.style.setProperty("--plyr-menu-max-height", reduced + "px");
+            }
+
+            if (rect.bottom > window.innerHeight - viewportPad) {
+              var overflowBottom = rect.bottom - (window.innerHeight - viewportPad);
+              var reducedBottom = Math.max(
+                120,
+                parseFloat(menu.style.maxHeight) - overflowBottom - 8,
+              );
+              menu.style.maxHeight = reducedBottom + "px";
+              menu.style.setProperty(
+                "--plyr-menu-max-height",
+                reducedBottom + "px",
+              );
+            }
+          });
+      }
+
+      function schedulePlyrMenuLayout() {
+        requestAnimationFrame(function () {
+          fixPlyrMenuLayout();
+          requestAnimationFrame(fixPlyrMenuLayout);
+        });
+      }
+
+      function wirePlyrMenuLayout() {
+        if (!plyr || plyrMenuLayoutWired) return;
+        plyrMenuLayoutWired = true;
+        fixPlyrMenuLayout();
+        window.addEventListener("resize", schedulePlyrMenuLayout);
+        window.addEventListener("orientationchange", schedulePlyrMenuLayout);
+        var settingsButton =
+          (plyr.elements &&
+            plyr.elements.buttons &&
+            plyr.elements.buttons.settings) ||
+          document.querySelector('#player [data-plyr="settings"]');
+        if (settingsButton) {
+          settingsButton.addEventListener("click", schedulePlyrMenuLayout);
+        }
+        var captionsButton =
+          (plyr.elements &&
+            plyr.elements.buttons &&
+            plyr.elements.buttons.captions) ||
+          document.querySelector('#player [data-plyr="captions"]');
+        if (captionsButton) {
+          captionsButton.addEventListener("click", schedulePlyrMenuLayout);
+        }
+        var player = document.getElementById("player");
+        if (player) {
+          player.addEventListener(
+            "click",
+            function (event) {
+              if (
+                event.target &&
+                event.target.closest &&
+                event.target.closest(".plyr__menu__container")
+              ) {
+                schedulePlyrMenuLayout();
+              }
+            },
+            true,
+          );
+        }
+        if (window.ResizeObserver && plyr.elements && plyr.elements.container) {
+          var menuLayoutObserver = new ResizeObserver(schedulePlyrMenuLayout);
+          menuLayoutObserver.observe(plyr.elements.container);
+        }
+      }
+
+      function isInteractivePlayerTarget(target) {
+        if (!target || !target.closest) return false;
+        return !!target.closest(
+          [
+            "#stream-actions",
+            "#copy-status",
+            ".plyr__controls",
+            ".plyr__menu__container",
+            ".plyr__control",
+            "button",
+            "a",
+            "input",
+            "select",
+            "textarea",
+            "summary",
+            '[role="button"]',
+            '[role="menu"]',
+            '[role="menuitem"]',
+            '[role="menuitemradio"]',
+          ].join(","),
+        );
+      }
+
+      function playerTapZone(clientX, rect) {
+        var ratio = (clientX - rect.left) / rect.width;
+        if (ratio <= EDGE_TAP_ZONE) return "backward";
+        if (ratio >= 1 - EDGE_TAP_ZONE) return "forward";
+        return "";
+      }
+
+      function resetMobileGestureTap() {
+        mobileGestureTap = { time: 0, zone: "", x: 0, y: 0 };
+      }
+
+      function eventHitsSeekZone(event) {
+        var player = document.getElementById("player");
+        var rect = player && player.getBoundingClientRect();
+        return !!(rect && rect.width && playerTapZone(event.clientX, rect));
+      }
+
+      function suppressFullscreenToggleEvent(event) {
+        if (isInteractivePlayerTarget(event.target)) return;
+        var shouldSuppress = Date.now() <= suppressNextFullscreenToggleUntil;
+        if (event.type === "dblclick" && eventHitsSeekZone(event))
+          shouldSuppress = true;
+        if (!shouldSuppress) return;
+        event.preventDefault();
+        event.stopPropagation();
+        if (event.stopImmediatePropagation) event.stopImmediatePropagation();
+      }
+
+      function handleMobileGesturePointerUp(event) {
+        if (!videoEl || !event.isPrimary) return;
+        if (
+          event.pointerType &&
+          event.pointerType !== "touch" &&
+          event.pointerType !== "pen"
+        )
+          return;
+        if (isInteractivePlayerTarget(event.target)) return;
+
+        var player = document.getElementById("player");
+        var rect = player && player.getBoundingClientRect();
+        if (!rect || !rect.width || !rect.height) return;
+        if (event.clientY > rect.bottom - Math.min(110, rect.height * 0.22)) {
+          resetMobileGestureTap();
+          return;
+        }
+
+        var zone = playerTapZone(event.clientX, rect);
+        if (!zone) {
+          resetMobileGestureTap();
+          return;
+        }
+
+        var now = Date.now();
+        var distance = Math.hypot(
+          event.clientX - mobileGestureTap.x,
+          event.clientY - mobileGestureTap.y,
+        );
+        if (
+          mobileGestureTap.zone === zone &&
+          now - mobileGestureTap.time <= DOUBLE_TAP_MS &&
+          distance <= DOUBLE_TAP_DISTANCE
+        ) {
+          event.preventDefault();
+          seekByGesture(
+            zone === "forward" ? MOBILE_SEEK_SECONDS : -MOBILE_SEEK_SECONDS,
+            zone,
+          );
+          resetMobileGestureTap();
+          return;
+        }
+
+        mobileGestureTap = {
+          time: now,
+          zone: zone,
+          x: event.clientX,
+          y: event.clientY,
+        };
+      }
+
+      function wireMobilePlayerGestures() {
+        var player = document.getElementById("player");
+        if (!player || player.dataset.mobileGesturesWired) return;
+        player.dataset.mobileGesturesWired = "true";
+        player.addEventListener("click", suppressFullscreenToggleEvent, true);
+        player.addEventListener(
+          "dblclick",
+          suppressFullscreenToggleEvent,
+          true,
+        );
+        player.addEventListener("pointerup", handleMobileGesturePointerUp, {
+          passive: false,
+        });
+        player.addEventListener("pointercancel", resetMobileGestureTap);
+      }
+
+      function lockLandscapeOnFullscreen() {
+        var orientation = window.screen && window.screen.orientation;
+        if (!orientation || !orientation.lock) return;
+        orientation.lock("landscape").catch(function () {});
+      }
+
+      function unlockLandscapeOnFullscreenExit() {
+        var orientation = window.screen && window.screen.orientation;
+        if (!orientation || !orientation.unlock) return;
+        try {
+          orientation.unlock();
+        } catch (err) {}
+      }
+
+      function requestPlaybackWakeLock() {
+        if (
+          !navigator.wakeLock ||
+          wakeLock ||
+          document.visibilityState !== "visible"
+        )
+          return;
+        if (!videoEl || videoEl.paused || videoEl.ended) return;
+        navigator.wakeLock
+          .request("screen")
+          .then(function (lock) {
+            if (
+              !videoEl ||
+              videoEl.paused ||
+              videoEl.ended ||
+              document.visibilityState !== "visible"
+            ) {
+              lock.release().catch(function () {});
+              return;
+            }
+            wakeLock = lock;
+            lock.addEventListener("release", function () {
+              if (wakeLock === lock) wakeLock = null;
+            });
+          })
+          .catch(function () {});
+      }
+
+      function releasePlaybackWakeLock() {
+        if (!wakeLock) return;
+        var lock = wakeLock;
+        wakeLock = null;
+        if (lock.release) {
+          lock.release().catch(function () {});
+        }
+      }
+
+      function syncPlaybackWakeLock() {
+        if (videoEl && !videoEl.paused && !videoEl.ended) {
+          requestPlaybackWakeLock();
+        } else {
+          releasePlaybackWakeLock();
+        }
+      }
+
+      function setPlayerRendering(active) {
+        document.documentElement.toggleAttribute(
+          "data-player-rendering",
+          !!active,
+        );
+        document.body.toggleAttribute("data-player-rendering", !!active);
+      }
+
+      function applyEmbedMode() {
+        if (!isEmbed) return;
+        document.documentElement.setAttribute("data-embed", "1");
+        document.body.setAttribute("data-embed", "1");
+        var streamActions = document.getElementById("stream-actions");
+        if (streamActions) streamActions.style.display = "none";
+      }
+
+      function progressPayload(endedOverride) {
+        var duration =
+          videoEl && Number.isFinite(videoEl.duration) ? videoEl.duration : 0;
+        var currentTime =
+          videoEl && Number.isFinite(videoEl.currentTime)
+            ? videoEl.currentTime
+            : 0;
+        var ended =
+          typeof endedOverride === "boolean"
+            ? endedOverride
+            : !!(videoEl && videoEl.ended);
+        return {
+          currentTime: Number(currentTime.toFixed(2)),
+          duration: Number(duration.toFixed(2)),
+          percent: duration
+            ? Number(Math.min(100, (currentTime / duration) * 100).toFixed(2))
+            : 0,
+          paused: !videoEl || videoEl.paused,
+          ended: ended,
+          streamType: currentStreamType || "",
+        };
+      }
+
+      function shouldPersistProgress(payload) {
+        if (!payload.duration || payload.duration < 30) return false;
+        if (payload.ended || payload.percent >= WATCHED_PERCENT) return false;
+        return (
+          payload.currentTime > 5 &&
+          payload.duration - payload.currentTime > RESUME_REMAINING_SECONDS
+        );
+      }
+
+      function currentPlaybackSeconds() {
+        return videoEl && Number.isFinite(videoEl.currentTime)
+          ? videoEl.currentTime
+          : 0;
+      }
+
+      function updatePlaybackCheckpoint(time) {
+        var seconds = Number(time);
+        if (Number.isFinite(seconds) && seconds > playbackCheckpoint) {
+          playbackCheckpoint = seconds;
+        }
+      }
+
+      function isRegressiveProgress(payload) {
+        if (!payload || payload.ended) return false;
+        return (
+          playbackCheckpoint > 60 &&
+          payload.currentTime < playbackCheckpoint - 45
+        );
+      }
+
+      function shouldEmitProgress(payload) {
+        if (!payload) return false;
+        if (Date.now() < suppressProgressUntil) return false;
+        if (payload.ended) return true;
+        return !isRegressiveProgress(payload);
+      }
+
+      function saveProgress(payload) {
+        if (!id) return;
+        if (isRegressiveProgress(payload)) return;
+        if (shouldPersistProgress(payload)) {
+          safeWrite(progressKey(), {
+            currentTime: payload.currentTime,
+            duration: payload.duration,
+            percent: payload.percent,
+            updatedAt: Date.now(),
+          });
+        } else if (payload.ended || payload.percent >= WATCHED_PERCENT) {
+          safeRemove(progressKey());
+        }
+      }
+
+      function emitProgress(endedOverride) {
+        if (!id || !videoEl) return;
+        var payload = progressPayload(endedOverride);
+        updatePlaybackCheckpoint(payload.currentTime);
+        if (!shouldEmitProgress(payload)) return;
+        saveProgress(payload);
+        postPlayerEvent(payload.ended ? "ended" : "progress", payload);
+      }
+
+      function emitCheckpointProgress() {
+        if (!id || !videoEl || playbackCheckpoint <= 0) return;
+        var payload = progressPayload(false);
+        payload.currentTime = Math.max(payload.currentTime, playbackCheckpoint);
+        payload.percent = payload.duration
+          ? Number(
+              Math.min(
+                100,
+                (payload.currentTime / payload.duration) * 100,
+              ).toFixed(2),
+            )
+          : payload.percent;
+        saveProgress(payload);
+        postPlayerEvent("progress", payload);
+      }
+
+      function startProgressTimer() {
+        clearInterval(progressTimer);
+        progressTimer = setInterval(function () {
+          if (videoEl && !videoEl.paused && !videoEl.ended) emitProgress(false);
+        }, 15000);
+      }
+
+      function savedResumeSeconds() {
+        var explicitStart = Number(p.get("start"));
+        if (Number.isFinite(explicitStart) && explicitStart > 0)
+          return explicitStart;
+        var saved = safeRead(progressKey());
+        if (
+          !saved ||
+          !saved.updatedAt ||
+          Date.now() - saved.updatedAt > STORAGE_TTL
+        ) {
+          safeRemove(progressKey());
+          return 0;
+        }
+        var currentTime = Number(saved.currentTime) || 0;
+        var duration = Number(saved.duration) || 0;
+        var percent =
+          Number(saved.percent) ||
+          (duration ? (currentTime / duration) * 100 : 0);
+        if (
+          !currentTime ||
+          percent >= WATCHED_PERCENT ||
+          (duration && duration - currentTime <= RESUME_REMAINING_SECONDS)
+        )
+          return 0;
+        return currentTime;
+      }
+
+      function applyResumePoint() {
+        if (resumeApplied || !videoEl) return;
+        var startAt = savedResumeSeconds();
+        resumeApplied = true;
+        if (startAt > 0) {
+          playbackCheckpoint = Math.max(playbackCheckpoint, startAt);
+          resumeStarted = true;
+          try {
+            videoEl.currentTime = startAt;
+          } catch (err) {}
+          videoEl.pause();
+        }
+      }
+
+      function recoveryStartPosition() {
+        return Math.max(playbackCheckpoint, currentPlaybackSeconds());
+      }
+
+      function beginPlaybackRecovery() {
+        hlsRecovering = true;
+        updatePlaybackCheckpoint(currentPlaybackSeconds());
+        suppressProgressUntil = Date.now() + 5000;
+      }
+
+      function endPlaybackRecovery() {
+        hlsRecovering = false;
+        var target = playbackCheckpoint;
+        if (target > 5 && currentPlaybackSeconds() + 15 < target) {
+          suppressProgressUntil = Date.now() + 2500;
+          try {
+            videoEl.currentTime = target;
+          } catch (err) {}
+        }
+        applySubtitlePreference();
+        suppressProgressUntil = Date.now() + 1500;
+      }
+
+      function scheduleSubtitlePreferenceRetry() {
+        clearTimeout(subtitlePreferenceRetryTimer);
+        subtitlePreferenceRetryTimer = setTimeout(function () {
+          subtitlePreferenceRetryTimer = null;
+          var hasTracks = textTracksArray().length > 0;
+          var showing = textTracksArray().some(function (track) {
+            return track.mode === "showing";
+          });
+          if (!hasTracks || showing) return;
+          applySubtitlePreference();
+        }, 350);
+      }
+
+      function setQuality(value) {
+        var height = Number(value);
+        if (currentStreamType === "file") {
+          setFileQuality(height);
+          saveQualityPreference(height);
+          return;
+        }
+        if (!hls) return;
+        if (height === 0) {
+          hls.currentLevel = -1;
+        } else if (typeof hlsQualityByHeight[height] === "number") {
+          hls.currentLevel = hlsQualityByHeight[height];
+        }
+        saveQualityPreference(height);
+      }
+
+      function applySavedStreamQuality() {
+        var saved = safeRead(qualityKey());
+        if (!saved || !Number.isFinite(Number(saved.height))) return;
+        setQuality(Number(saved.height));
+      }
+
+      function getQualityOptions() {
+        if (!hls || !hls.levels || !hls.levels.length) return [];
+        hlsQualityByHeight = {};
+        hls.levels.forEach(function (level, index) {
+          var height = Number(level.height);
+          if (!height) return;
+          if (
+            typeof hlsQualityByHeight[height] !== "number" ||
+            (level.bitrate || 0) >
+              (hls.levels[hlsQualityByHeight[height]].bitrate || 0)
+          ) {
+            hlsQualityByHeight[height] = index;
+          }
+        });
+        return Object.keys(hlsQualityByHeight)
+          .map(Number)
+          .sort(function (a, b) {
+            return b - a;
+          });
+      }
+
+      function getVariantHeight(variant, index) {
+        var height = Number(variant && variant.height);
+        if (height) return height;
+        var label = String((variant && variant.label) || "");
+        var match = label.match(/(\d{3,4})/);
+        return match ? Number(match[1]) : 0;
+      }
+
+      function rawFileSource(item) {
+        if (!item) return "";
+        if (item.sourceUrl) return item.sourceUrl;
+        if (item.directUrl) return item.directUrl;
+        var url = item.url || "";
+        var match = String(url).match(/[?&]url=([^&]+)/);
+        return match ? decodeURIComponent(match[1]) : url;
+      }
+
+      function filePlaybackUrl(item) {
+        var source = rawFileSource(item);
+        if (!source) return "";
+        if (/\/proxy\/file(?:\?|$)/.test(source)) return source;
+        if (!/^https?:/i.test(source)) return source;
+        var proxy = new URL("/proxy/file", fileProxyBase);
+        proxy.searchParams.set("url", source);
+        return proxy.href;
+      }
+
+      function sourceAtTime(src, seconds) {
+        var start = Math.max(0, Number(seconds) || 0);
+        if (!src || start < 1) return src;
+        var base = String(src).split("#")[0];
+        return base + "#t=" + start.toFixed(3);
+      }
+
+      function getFileQualityOptions(variants) {
+        fileQualityByHeight = {};
+        (variants || []).forEach(function (variant, index) {
+          if (!filePlaybackUrl(variant)) return;
+          var height = getVariantHeight(variant, index);
+          if (!height) return;
+          if (!fileQualityByHeight[height]) {
+            fileQualityByHeight[height] = variant;
+          }
+        });
+        return Object.keys(fileQualityByHeight)
+          .map(Number)
+          .sort(function (a, b) {
+            return b - a;
+          });
+      }
+
+      function defaultFileQuality(qualityOptions) {
+        var saved = safeRead(qualityKey());
+        var savedHeight = saved && Number(saved.height);
+        if (savedHeight && qualityOptions.indexOf(savedHeight) >= 0)
+          return savedHeight;
+        return qualityOptions[0] || null;
+      }
+
+      function setFileQuality(value) {
+        var height = Number(value);
+        var variant = fileQualityByHeight[height];
+        var src = filePlaybackUrl(variant);
+        if (!src || !videoEl || currentFileQuality === height) return;
+
+        var resumeAt = videoEl.currentTime || 0;
+        var resumeFrom = Math.max(0, resumeAt - 1.5);
+        var shouldPlay = !videoEl.paused && !videoEl.ended;
+        currentFileQuality = height;
+
+        videoEl.addEventListener(
+          "loadedmetadata",
+          function restoreFilePosition() {
+            if (resumeAt && Number.isFinite(resumeAt)) {
+              try {
+                videoEl.currentTime = resumeAt;
+              } catch (err) {}
+            }
+          },
+          { once: true },
+        );
+        videoEl.addEventListener(
+          "seeked",
+          function resumeFilePlayback() {
+            if (shouldPlay) {
+              playVideo();
+            }
+          },
+          { once: true },
+        );
+
+        videoEl.src = sourceAtTime(src, resumeFrom);
+        videoEl.load();
+        if (shouldPlay && resumeAt < 1) {
+          videoEl.addEventListener("canplay", playVideo, { once: true });
+        }
+      }
+
+      function textTracksArray() {
+        return videoEl && videoEl.textTracks
+          ? Array.prototype.slice.call(videoEl.textTracks)
+          : [];
+      }
+
+      function findHlsSubtitleTrack(textTrack) {
+        if (!hls || !hls.subtitleTracks || !textTrack) return -1;
+        var label = (textTrack.label || "").toLowerCase();
+        var language = (textTrack.language || "").toLowerCase();
+        var subtitleTracks = hls.subtitleTracks || [];
+        var byLanguageAndLabel = subtitleTracks.findIndex(function (track) {
+          return (
+            (track.lang || "").toLowerCase() === language &&
+            (track.name || "").toLowerCase() === label
+          );
+        });
+        if (byLanguageAndLabel >= 0) return byLanguageAndLabel;
+
+        var byLanguage = subtitleTracks.findIndex(function (track) {
+          return language && (track.lang || "").toLowerCase() === language;
+        });
+        if (byLanguage >= 0) return byLanguage;
+
+        return subtitleTracks.findIndex(function (track) {
+          return label && (track.name || "").toLowerCase() === label;
+        });
+      }
+
+      function syncActiveSubtitleTrack() {
+        var activeTrack = null;
+        var tracks = textTracksArray();
+
+        // 1. Identify which track the user selected via Plyr
+        tracks.forEach(function (track) {
+          if (track.mode === "showing" && !activeTrack) {
+            activeTrack = track;
+          }
+        });
+
+        if (!hls || !hls.subtitleTracks || !hls.subtitleTracks.length) return;
+
+        // 2. If no track is showing, only mute HLS when user saved captions off
+        if (!activeTrack) {
+          var saved = safeRead(subtitleKey());
+          if (!saved || saved.off) {
+            if (hls.subtitleTrack !== -1) {
+              hls.subtitleTrack = -1;
+            }
+          }
+          return;
+        }
+
+        // 3. Match the track label/language up with HLS's manifest tracks
+        var hlsSubtitleTrack = findHlsSubtitleTrack(activeTrack);
+        if (hlsSubtitleTrack >= 0 && hls.subtitleTrack !== hlsSubtitleTrack) {
+          hls.subtitleTrack = hlsSubtitleTrack;
+        } else if (hlsSubtitleTrack < 0 && hls.subtitleTrack !== -1) {
+          hls.subtitleTrack = -1;
+        }
+      }
+
+      function clearSubtitleSyncTimers() {
+        subtitleSyncTimers.forEach(function (timer) {
+          clearTimeout(timer);
+        });
+        subtitleSyncTimers = [];
+      }
+
+      function scheduleSubtitleSync() {
+        clearSubtitleSyncTimers();
+        [0, 80, 250].forEach(function (delay) {
+          subtitleSyncTimers.push(setTimeout(syncActiveSubtitleTrack, delay));
+        });
+      }
+
+      function disableSubtitles() {
+        clearSubtitleSyncTimers();
+        textTracksArray().forEach(function (track) {
+          // Changed from 'disabled' to 'hidden' so Plyr's menu can still read them
+          track.mode = "hidden";
+        });
+        if (hls && hls.subtitleTracks && hls.subtitleTracks.length) {
+          hls.subtitleTrack = -1;
+        }
+      }
+
+      function trackMatchesSelection(track, selection) {
+        if (!track || !selection) return false;
+        var label = (track.label || "").toLowerCase();
+        var language = (track.language || "").toLowerCase();
+        if (selection.label) {
+          return label === String(selection.label).toLowerCase();
+        }
+        if (selection.language) {
+          return language === String(selection.language).toLowerCase();
+        }
+        return false;
+      }
+
+      function normalizeSubtitleSelection(value) {
+        if (!value) return null;
+        if (typeof value === "object") return value;
+        return { language: String(value) };
+      }
+
+      function setSubtitleMode(selection) {
+        selection = normalizeSubtitleSelection(selection);
+        var selected = null;
+        textTracksArray().forEach(function (track) {
+          if (!selected && trackMatchesSelection(track, selection)) {
+            selected = track;
+            track.mode = "showing";
+          } else {
+            track.mode = "hidden";
+          }
+        });
+        if (selected && plyr) {
+          try {
+            plyr.language = selected.language || "";
+          } catch (err) {}
+        }
+        scheduleSubtitleSync();
+        return !!selected;
+      }
+
+      function applySubtitlePreference() {
+        suppressSubtitlePreference = true;
+        var requested = p.get("subtitle");
+        var saved = safeRead(subtitleKey());
+        var applied = false;
+        if (requested && /^(off|none|0|false)$/i.test(requested)) {
+          disableSubtitles();
+          applied = true;
+        } else if (requested) {
+          applied =
+            setSubtitleMode({ label: requested }) ||
+            setSubtitleMode({ language: requested });
+        } else if (saved && saved.off) {
+          disableSubtitles();
+          applied = true;
+        } else if (saved) {
+          if (saved.label) {
+            applied = setSubtitleMode({ label: saved.label });
+          }
+          if (!applied && saved.language) {
+            applied = setSubtitleMode({ language: saved.language });
+          }
+          if (!applied && saved.language) {
+            applied = setSubtitleMode({
+              language: String(saved.language).split("-")[0],
+            });
+          }
+        }
+        if (!applied) {
+          applied =
+            setSubtitleMode({ language: "en" }) ||
+            setSubtitleMode({ language: "en-2" }) ||
+            setSubtitleMode({ language: "en-3" });
+        }
+        if (!applied) {
+          scheduleSubtitlePreferenceRetry();
+        }
+        suppressSubtitlePreference = false;
+      }
+
+      function saveSubtitlePreference(off) {
+        if (suppressSubtitlePreference) return;
+        if (off) {
+          safeWrite(subtitleKey(), { off: true, updatedAt: Date.now() });
+          return;
+        }
+        var showing = textTracksArray().find(function (track) {
+          return track.mode === "showing";
+        });
+        if (showing) {
+          safeWrite(subtitleKey(), {
+            off: false,
+            language: showing.language || showing.label || "",
+            label: showing.label || "",
+            updatedAt: Date.now(),
+          });
+        }
+      }
+
+      function wireSubtitleControls() {
+        if (!videoEl || videoEl.dataset.subtitleControlsWired) return;
+        videoEl.dataset.subtitleControlsWired = "true";
+        if (videoEl.textTracks) {
+          if (videoEl.textTracks.addEventListener) {
+            videoEl.textTracks.addEventListener("change", scheduleSubtitleSync);
+          }
+          videoEl.textTracks.onchange = scheduleSubtitleSync;
+        }
+      }
+
+      function initPlayer(options) {
+        if (plyr || !videoEl || !window.Plyr) return;
+        options = options || {};
+        var qualityOptions = options.qualityOptions || [];
+        var qualityValues = options.includeAuto
+          ? [0].concat(qualityOptions)
+          : qualityOptions;
+        var savedQuality = savedQualityHeight(
+          qualityOptions,
+          options.includeAuto,
+        );
+        var defaultQuality =
+          savedQuality !== null
+            ? savedQuality
+            : typeof options.defaultQuality === "number"
+              ? options.defaultQuality
+              : qualityValues[0];
+        var playerConfig = {
+          controls: [
+            "play-large",
+            "rewind",
+            "play",
+            "fast-forward",
+            "progress",
+            "current-time",
+            "duration",
+            "mute",
+            "volume",
+            "captions",
+            "settings",
+            "pip",
+            "airplay",
+            "fullscreen",
+          ],
+          settings: qualityOptions.length
+            ? ["captions", "quality", "speed"]
+            : ["captions", "speed"],
+          i18n: {
+            qualityLabel: options.includeAuto ? { 0: "Auto" } : {},
+          },
+          seekTime: 10,
+          captions: { active: false, language: "auto", update: true },
+          speed: {
+            selected: savedPlaybackSpeed(),
+            options: [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2],
+          },
+          keyboard: { focused: true, global: true },
+          tooltips: { controls: true, seek: true },
+        };
+
+        if (qualityOptions.length) {
+          playerConfig.quality = {
+            default: defaultQuality,
+            options: qualityValues,
+            forced: true,
+            onChange: setQuality,
+          };
+        }
+
+        if (previewThumbnails.length) {
+          playerConfig.previewThumbnails = {
+            enabled: true,
+            src: previewThumbnails,
+          };
+        }
+
+        plyr = new Plyr(videoEl, playerConfig);
+        ensurePlayerOverlaysInPlyr();
+        wirePlyrMenuLayout();
+
+        wireSubtitleControls();
+        applySubtitlePreference();
+        applyCaptionFontSize();
+
+        plyr.on("ratechange", function () {
+          if (plyr && Number.isFinite(plyr.speed)) {
+            savePlaybackSpeed(plyr.speed);
+          }
+        });
+        plyr.on("captionsenabled", function () {
+          clearTimeout(captionOffSaveTimer);
+          captionOffSaveTimer = null;
+          scheduleSubtitleSync();
+          applyCaptionFontSize();
+          setTimeout(function () {
+            saveSubtitlePreference(false);
+          }, 120);
+        });
+        plyr.on("captionsdisabled", function () {
+          scheduleSubtitleSync();
+          clearTimeout(captionOffSaveTimer);
+          captionOffSaveTimer = setTimeout(function () {
+            captionOffSaveTimer = null;
+            var showing = textTracksArray().some(function (track) {
+              return track.mode === "showing";
+            });
+            if (!showing) saveSubtitlePreference(true);
+          }, 700);
+        });
+
+        plyr.on("languagechange", function () {
+          var tracks = textTracksArray();
+          var plyrLang = (plyr.language || "").toLowerCase();
+
+          if (plyrLang && plyrLang !== "auto") {
+            var matched = false;
+            tracks.forEach(function (track) {
+              var trackLang = (track.language || "").toLowerCase();
+              if (!matched && trackLang === plyrLang) {
+                track.mode = "showing";
+                matched = true;
+              } else {
+                track.mode = "hidden";
+              }
+            });
+          }
+          scheduleSubtitleSync();
+          setTimeout(function () {
+            saveSubtitlePreference(false);
+          }, 120);
+        });
+
+        plyr.on("enterfullscreen", lockLandscapeOnFullscreen);
+        plyr.on("exitfullscreen", unlockLandscapeOnFullscreenExit);
+      }
+
+      function setCaptionTracks(tracks) {
+        if (!videoEl) return;
+        Array.prototype.slice
+          .call(videoEl.querySelectorAll("track[data-stream-track]"))
+          .forEach(function (track) {
+            track.remove();
+          });
+        (tracks || []).forEach(function (track, index) {
+          if (!track || !track.src) return;
+          var el = document.createElement("track");
+          el.setAttribute("data-stream-track", "");
+          el.setAttribute("data-track-label", track.label || "");
+          el.kind = track.kind || "subtitles";
+          el.label = track.label || "Subtitle " + (index + 1);
+          el.srclang = track.srclang || "und";
+          el.src = track.src;
+          el.default = false;
+          el.addEventListener("error", function () {
+            var details = {
+              stage: "subtitles",
+              message: "Subtitle track failed to load",
+              label: el.label || "",
+              language: el.srclang || "",
+            };
+            console.warn("[movie-scraper:subtitle]", details);
+            postPlayerEvent("error", details);
+          });
+          el.addEventListener("load", function () {
+            applySubtitlePreference();
+          });
+          videoEl.appendChild(el);
+        });
+        applySubtitlePreference();
+        scheduleSubtitlePreferenceRetry();
+      }
+
+      function setPreviewThumbnails(tracks) {
+        previewThumbnails = (tracks || []).filter(Boolean);
+      }
+
+      function postStreamLoaded() {
+        postPlayerEvent("stream-loaded", {
+          streamType: currentStreamType || "",
+          title: (mediaMeta && mediaMeta.title) || "",
+          year: (mediaMeta && mediaMeta.year) || "",
+          episodeTitle: (mediaMeta && mediaMeta.episodeTitle) || "",
+          duration:
+            videoEl && Number.isFinite(videoEl.duration)
+              ? videoEl.duration
+              : null,
+        });
+      }
+
+      function checkFileProxy() {
+        return fetch(fileProxyBase + "/health", { cache: "no-store" })
+          .then(function (res) {
+            if (!res.ok) throw new Error("health returned " + res.status);
+            return true;
+          })
+          .catch(function () {
+            throw new Error("Server down or direct file proxy unavailable");
+          });
+      }
+
+      function resetHlsRecovery() {
+        clearTimeout(hlsRecoveryTimer);
+        hlsRecoveryTimer = null;
+        hlsRecovery = { attempts: 0, startedAt: 0, lastError: null };
+      }
+
+      function hlsErrorMessage(data) {
+        if (!data) return "Unknown HLS error";
+        return data.details || data.type || data.reason || "Unknown HLS error";
+      }
+
+      function hlsRecoveryDelay(attempt) {
+        var delay =
+          HLS_RECOVERY_BASE_DELAY * Math.pow(2, Math.max(0, attempt - 1));
+        return Math.min(HLS_RECOVERY_MAX_DELAY, delay);
+      }
+
+      function failHlsRecovery(data) {
+        var details = hlsErrorMessage(data || hlsRecovery.lastError);
+        resetHlsRecovery();
+        if (hls) {
+          hls.destroy();
+          hls = null;
+        }
+        showPlayerError({
+          stage: "hls",
+          message:
+            "HLS playback could not recover after repeated retries: " + details,
+          streamType: "hls",
+        });
+      }
+
+      function performHlsRecovery(data) {
+        if (!hls) return;
+        var type = data && data.type;
+        var position = recoveryStartPosition();
+        beginPlaybackRecovery();
+        try {
+          if (
+            window.Hls &&
+            type === Hls.ErrorTypes.MEDIA_ERROR &&
+            hls.recoverMediaError
+          ) {
+            hls.recoverMediaError();
+          } else if (hls.startLoad) {
+            hls.startLoad(position > 0 ? position : -1);
+          }
+          setTimeout(endPlaybackRecovery, 600);
+          playVideo();
+        } catch (err) {
+          hlsRecovering = false;
+          failHlsRecovery(data);
+        }
+      }
+
+      function scheduleHlsRecovery(data) {
+        if (!hls) return;
+        var now = Date.now();
+        if (!hlsRecovery.startedAt) hlsRecovery.startedAt = now;
+        hlsRecovery.attempts += 1;
+        hlsRecovery.lastError = data || null;
+
+        var elapsed = now - hlsRecovery.startedAt;
+        if (
+          hlsRecovery.attempts > HLS_RECOVERY_MAX_ATTEMPTS ||
+          elapsed > HLS_RECOVERY_MAX_ELAPSED
+        ) {
+          failHlsRecovery(data);
+          return;
+        }
+
+        clearTimeout(hlsRecoveryTimer);
+        var delay = hlsRecoveryDelay(hlsRecovery.attempts);
+        console.warn("[movie-scraper:hls-recovery]", {
+          attempt: hlsRecovery.attempts,
+          delay: delay,
+          type: (data && data.type) || "",
+          details: (data && data.details) || "",
+        });
+        hlsRecoveryTimer = setTimeout(function () {
+          hlsRecoveryTimer = null;
+          performHlsRecovery(data);
+        }, delay);
+      }
+
+      function handleHlsError(data) {
+        if (!data) return;
+        if (
+          !data.fatal &&
+          hlsRecovery.attempts + 1 < HLS_NON_FATAL_RETRY_THRESHOLD
+        ) {
+          hlsRecovery.attempts += 1;
+          hlsRecovery.lastError = data;
+          return;
+        }
+        if (!hlsRecovering) {
+          scheduleHlsRecovery(data);
+        }
+      }
+
+      function playVideo() {
+        if (resumeStarted) return;
+        if (videoEl) {
+          var playPromise = plyr ? plyr.play() : videoEl.play();
+          if (playPromise && playPromise.catch) {
+            playPromise.catch(function () {});
+          }
+        }
+      }
+
+      function attachHlsSource(src) {
+        if (!videoEl) return;
+        currentStreamType = "hls";
+        fileQualityByHeight = {};
+        currentFileQuality = null;
+        resetHlsRecovery();
+        if (hls) {
+          hls.destroy();
+          hls = null;
+        }
+        videoEl.removeAttribute("src");
+        videoEl.load();
+        if (window.Hls && Hls.isSupported()) {
+          hls = new Hls({ enableWorker: true });
+          hls.attachMedia(videoEl);
+          hls.on(Hls.Events.MEDIA_ATTACHED, function () {
+            hls.loadSource(src);
+          });
+          hls.on(Hls.Events.MANIFEST_PARSED, function () {
+            resetHlsRecovery();
+            var qualityOptions = getQualityOptions();
+            var savedQuality = savedQualityHeight(qualityOptions, true);
+            initPlayer({
+              qualityOptions: qualityOptions,
+              includeAuto: true,
+              defaultQuality: savedQuality !== null ? savedQuality : 0,
+            });
+            applySavedStreamQuality();
+            applySubtitlePreference();
+            scheduleSubtitlePreferenceRetry();
+            playVideo();
+          });
+          hls.on(Hls.Events.SUBTITLE_TRACKS_UPDATED, function () {
+            applySubtitlePreference();
+          });
+          hls.on(Hls.Events.FRAG_LOADED, resetHlsRecovery);
+          hls.on(Hls.Events.LEVEL_LOADED, resetHlsRecovery);
+          hls.on(Hls.Events.ERROR, function (event, data) {
+            handleHlsError(data);
+          });
+        } else if (videoEl.canPlayType("application/vnd.apple.mpegurl")) {
+          initPlayer();
+          videoEl.src = src;
+          videoEl.load();
+          playVideo();
+        } else {
+          showPlayerError({
+            stage: "hls",
+            message: "HLS playback is not supported in this browser.",
+            streamType: "hls",
+          });
+        }
+      }
+
+      function attachDirectSource(src, variants) {
+        if (!videoEl) return;
+        currentStreamType = "file";
+        resetHlsRecovery();
+        if (hls) {
+          hls.destroy();
+          hls = null;
+        }
+
+        var qualityOptions = getFileQualityOptions(variants);
+        currentFileQuality = defaultFileQuality(qualityOptions);
+        if (currentFileQuality && fileQualityByHeight[currentFileQuality]) {
+          src = filePlaybackUrl(fileQualityByHeight[currentFileQuality]);
+        }
+        initPlayer({
+          qualityOptions: qualityOptions,
+          includeAuto: false,
+          defaultQuality: currentFileQuality,
+        });
+        applySavedStreamQuality();
         videoEl.src = src;
         videoEl.load();
         playVideo();
-      } else {
-        showErr('HLS playback is not supported in this browser.');
-      }
-    }
-
-    function attachDirectSource(src, variants) {
-      if (!videoEl) return;
-      currentStreamType = 'file';
-      if (hls) {
-        hls.destroy();
-        hls = null;
       }
 
-      var qualityOptions = getFileQualityOptions(variants);
-      currentFileQuality = qualityOptions[0] || null;
-      initPlayer({
-        qualityOptions: qualityOptions,
-        includeAuto: false,
-        defaultQuality: currentFileQuality
+      function showPlayer() {
+        setPlayerRendering(true);
+        clearInterval(msgTimer);
+        document.getElementById("loader").style.display = "none";
+        document.getElementById("player").style.display = "block";
+        if (currentStreamUrl && !isEmbed)
+          document.getElementById("stream-actions").style.display = "flex";
+        applyEmbedMode();
+      }
+
+      function showPlayerError(error) {
+        error = error || {};
+        updatePlaybackCheckpoint(currentPlaybackSeconds());
+        emitCheckpointProgress();
+        hlsRecovering = false;
+        clearTimeout(hlsRecoveryTimer);
+        hlsRecoveryTimer = null;
+        if (videoEl) {
+          try {
+            videoEl.pause();
+          } catch (err) {}
+        }
+        var isNoStream =
+          error.kind === "no-stream" || /no stream/i.test(error.message || "");
+        var title = isNoStream ? "No stream found" : "Something went wrong";
+        var message = isNoStream
+          ? "We couldn\u2019t find a playable stream for this title."
+          : "We couldn\u2019t play this stream. Try again later.";
+        var details = {
+          stage: error.stage || "unknown",
+          message: error.message || "",
+          status: error.status || "",
+          streamType: error.streamType || currentStreamType || "",
+          mediaErrorCode: error.mediaErrorCode || "",
+          source: truncateValue(error.source || currentStreamUrl || ""),
+        };
+        console.error("[movie-scraper:error]", details);
+        postPlayerEvent("error", details);
+        setPlayerRendering(false);
+        clearInterval(msgTimer);
+        clearInterval(progressTimer);
+        resetHlsRecovery();
+        document.getElementById("loader").style.display = "none";
+        document.getElementById("stream-actions").style.display = "none";
+        document.getElementById("err").style.display = "flex";
+        document.getElementById("err-title").textContent = title;
+        document.getElementById("err-message").textContent = message;
+        var errRetry = document.getElementById("err-retry");
+        if (errRetry) errRetry.style.display = "";
+        document.getElementById("err-debug").textContent = Object.entries(
+          details,
+        )
+          .filter(function (entry) {
+            return entry[1] !== "";
+          })
+          .map(function (entry) {
+            return entry[0] + ": " + entry[1];
+          })
+          .join("\n");
+        applyEmbedMode();
+      }
+
+      document.getElementById("err-retry").addEventListener("click", function () {
+        location.reload();
       });
-      videoEl.src = src;
-      videoEl.load();
-      playVideo();
-    }
 
-    function showPlayer() {
-      setPlayerRendering(true);
-      clearInterval(msgTimer);
-      document.getElementById('loader').style.display = 'none';
-      document.getElementById('player').style.display = 'block';
-      if (currentStreamUrl) document.getElementById('stream-actions').style.display = 'flex';
-    }
-
-    function showErr(msg) {
-      setPlayerRendering(false);
-      clearInterval(msgTimer);
-      document.getElementById('loader').style.display = 'none';
-      document.getElementById('stream-actions').style.display = 'none';
-      document.getElementById('err').style.display = 'flex';
-      document.getElementById('err-detail').textContent = msg || '';
-      var vidsrcUrl = s
-        ? 'https://vidsrc.xyz/embed/tv?tmdb=' + id + '&season=' + s + '&episode=' + (e || '1')
-        : 'https://vidsrc.xyz/embed/movie?tmdb=' + id;
-      document.getElementById('err-link').href = vidsrcUrl;
-    }
-
-    function loadBackdrop(id, isTv) {
-      var type = isTv ? 'tv' : 'movie';
-      fetch('https://api.themoviedb.org/3/' + type + '/' + id + '?api_key=' + TMDB_KEY)
-        .then(function (r) { return r.json(); })
-        .then(function (d) {
-          var img = d.backdrop_path || d.poster_path;
-          if (!img) return;
-          var imageUrl = 'https://image.tmdb.org/t/p/w1280' + img;
-          var url = 'https://wsrv.nl/?url=' + encodeURIComponent(imageUrl) + '&bg=black&blur=3';
-          var bg = document.getElementById('loader-bg');
-          if (videoEl) {
-            videoEl.poster = imageUrl;
-            if (plyr) {
-              plyr.poster = imageUrl;
-            }
-          }
-          var preload = new Image();
-          preload.onload = function () { bg.style.backgroundImage = 'url(' + url + ')'; bg.style.opacity = '1'; };
-          preload.src = url;
-          if (isTv && s && e) {
-            fetch('https://api.themoviedb.org/3/tv/' + id + '/season/' + s + '/episode/' + (e || '1') + '?api_key=' + TMDB_KEY)
-              .then(function (resp) { return resp.ok ? resp.json() : null; })
-              .then(function (ep) {
-                if (ep && mediaMeta) mediaMeta.episodeTitle = ep.name || '';
-              })
-              .catch(function () { });
-          }
-        })
-        .catch(function () { });
-    }
-
-    function setStreamHelper(stream) {
-      var copyButton = document.getElementById('copy-hls');
-      currentStreamType = inferStreamType(stream);
-      currentStreamUrl = stream && stream.url
-        ? new URL(currentStreamType === 'file' ? filePlaybackUrl(stream) : stream.url, location.href).href
-        : '';
-      if (copyButton) {
-        var isFile = currentStreamType === 'file';
-        copyButton.textContent = isFile ? 'Video URL' : 'HLS URL';
-        copyButton.title = isFile ? 'Copy proxied video file URL' : 'Copy proxied HLS playlist URL';
-      }
-    }
-
-    function showCopyStatus(message) {
-      var el = document.getElementById('copy-status');
-      el.textContent = message;
-      el.classList.add('visible');
-      clearTimeout(copyStatusTimer);
-      copyStatusTimer = setTimeout(function () {
-        el.classList.remove('visible');
-      }, 2200);
-    }
-
-    function fallbackCopy(text, onDone, onFail) {
-      var textarea = document.createElement('textarea');
-      textarea.value = text;
-      textarea.setAttribute('readonly', '');
-      textarea.style.position = 'fixed';
-      textarea.style.left = '-9999px';
-      document.body.appendChild(textarea);
-      textarea.select();
-      try {
-        document.execCommand('copy') ? onDone() : onFail();
-      } catch (err) {
-        onFail();
-      }
-      document.body.removeChild(textarea);
-    }
-
-    function copyText(text, message) {
-      if (!text) return showCopyStatus('Stream is not ready');
-      var done = function () { showCopyStatus(message); };
-      var fail = function () { showCopyStatus('Copy failed'); };
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(text).then(done).catch(function () {
-          fallbackCopy(text, done, fail);
+      function showErr(msg, stage) {
+        showPlayerError({
+          kind: /no stream/i.test(msg || "") ? "no-stream" : "generic",
+          stage: stage || "unknown",
+          message: msg || "",
         });
-      } else {
-        fallbackCopy(text, done, fail);
       }
-    }
 
-    document.getElementById('copy-hls').addEventListener('click', function () {
-      copyText(currentStreamUrl, currentStreamType === 'file' ? 'Video URL copied' : 'HLS URL copied');
-    });
+      function loadBackdrop(id, isTv) {
+        var type = isTv ? "tv" : "movie";
+        fetch(
+          "https://api.themoviedb.org/3/" +
+            type +
+            "/" +
+            id +
+            "?api_key=" +
+            TMDB_KEY,
+        )
+          .then(function (r) {
+            return r.json();
+          })
+          .then(function (d) {
+            var img = d.backdrop_path || d.poster_path;
+            if (!img) return;
+            var imageUrl = "https://image.tmdb.org/t/p/w1280" + img;
+            var url =
+              "https://wsrv.nl/?url=" +
+              encodeURIComponent(imageUrl) +
+              "&bg=black&blur=3";
+            var bg = document.getElementById("loader-bg");
+            if (videoEl) {
+              videoEl.poster = imageUrl;
+              if (plyr) {
+                plyr.poster = imageUrl;
+              }
+            }
+            var preload = new Image();
+            preload.onload = function () {
+              bg.style.backgroundImage = "url(" + url + ")";
+              bg.style.opacity = "1";
+            };
+            preload.src = url;
+            if (isTv && s && e) {
+              fetch(
+                "https://api.themoviedb.org/3/tv/" +
+                  id +
+                  "/season/" +
+                  s +
+                  "/episode/" +
+                  (e || "1") +
+                  "?api_key=" +
+                  TMDB_KEY,
+              )
+                .then(function (resp) {
+                  return resp.ok ? resp.json() : null;
+                })
+                .then(function (ep) {
+                  if (ep && mediaMeta) mediaMeta.episodeTitle = ep.name || "";
+                })
+                .catch(function () {});
+            }
+          })
+          .catch(function () {});
+      }
 
-    if (!id) {
-      setPlayerRendering(false);
-      clearInterval(msgTimer);
-      document.getElementById('loader').style.display = 'none';
-      document.getElementById('usage').style.display = 'flex';
-    } else {
-      loadBackdrop(id, !!s);
-      var api = '/api?' + (s ? 'id=' + id + '&s=' + s + '&e=' + (e || '1') : 'id=' + id);
-      fetch(api)
-        .then(function (r) { return r.json(); })
-        .then(function (d) {
-          if (d.error) return showErr(d.error);
-          if (!d.url) return showErr('No stream in response');
-          setStreamHelper(d);
-          setCaptionTracks(d.tracks);
-          setPreviewThumbnails(d.previewThumbnails);
-          play(d);
-        })
-        .catch(function (err) { showErr(err.message); });
-    }
+      function setStreamHelper(stream) {
+        var copyButton = document.getElementById("copy-hls");
+        currentStreamType = inferStreamType(stream);
+        currentStreamUrl =
+          stream && stream.url
+            ? new URL(
+                currentStreamType === "file"
+                  ? filePlaybackUrl(stream)
+                  : stream.url,
+                location.href,
+              ).href
+            : "";
+        if (copyButton) {
+          var isFile = currentStreamType === "file";
+          copyButton.textContent = isFile ? "Video URL" : "HLS URL";
+          copyButton.title = isFile
+            ? "Copy proxied video file URL"
+            : "Copy proxied HLS playlist URL";
+        }
+      }
 
-    if (videoEl) {
-      videoEl.addEventListener('loadedmetadata', showPlayer);
-      videoEl.addEventListener('error', function () {
-        showErr('Video playback error');
+      function showCopyStatus(message) {
+        var el = document.getElementById("copy-status");
+        el.textContent = message;
+        el.classList.add("visible");
+        clearTimeout(copyStatusTimer);
+        copyStatusTimer = setTimeout(function () {
+          el.classList.remove("visible");
+        }, 2200);
+      }
+
+      function fallbackCopy(text, onDone, onFail) {
+        var textarea = document.createElement("textarea");
+        textarea.value = text;
+        textarea.setAttribute("readonly", "");
+        textarea.style.position = "fixed";
+        textarea.style.left = "-9999px";
+        document.body.appendChild(textarea);
+        textarea.select();
+        try {
+          document.execCommand("copy") ? onDone() : onFail();
+        } catch (err) {
+          onFail();
+        }
+        document.body.removeChild(textarea);
+      }
+
+      function copyText(text, message) {
+        if (!text) return showCopyStatus("Stream is not ready");
+        var done = function () {
+          showCopyStatus(message);
+        };
+        var fail = function () {
+          showCopyStatus("Copy failed");
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard
+            .writeText(text)
+            .then(done)
+            .catch(function () {
+              fallbackCopy(text, done, fail);
+            });
+        } else {
+          fallbackCopy(text, done, fail);
+        }
+      }
+
+      document
+        .getElementById("copy-hls")
+        .addEventListener("click", function () {
+          copyText(
+            currentStreamUrl,
+            currentStreamType === "file"
+              ? "Video URL copied"
+              : "HLS URL copied",
+          );
+        });
+
+      applyEmbedMode();
+      postPlayerEvent("ready", {});
+
+      if (!id) {
+        setPlayerRendering(false);
+        clearInterval(msgTimer);
+        document.getElementById("loader").style.display = "none";
+        document.getElementById("usage").style.display = "flex";
+      } else {
+        loadBackdrop(id, !!s);
+        var api =
+          "/api?" +
+          (s ? "id=" + id + "&s=" + s + "&e=" + (e || "1") : "id=" + id);
+        fetch(api)
+          .then(function (r) {
+            return r.json().then(function (body) {
+              if (!r.ok) {
+                var err = new Error(
+                  (body && body.error) || "Resolver returned " + r.status,
+                );
+                err.status = r.status;
+                throw err;
+              }
+              return body;
+            });
+          })
+          .then(function (d) {
+            if (d.error)
+              return showPlayerError({
+                kind: /no stream/i.test(d.error) ? "no-stream" : "generic",
+                stage: "resolve",
+                message: d.error,
+              });
+            if (!d.url)
+              return showPlayerError({
+                kind: "no-stream",
+                stage: "resolve",
+                message: "No stream in response",
+              });
+            streamData = d;
+            mediaMeta = d.meta || null;
+            setStreamHelper(d);
+            setCaptionTracks(d.tracks);
+            setPreviewThumbnails(d.previewThumbnails);
+            play(d);
+          })
+          .catch(function (err) {
+            showPlayerError({
+              kind: /no stream/i.test(err.message || "")
+                ? "no-stream"
+                : "generic",
+              stage: "resolve",
+              message: err.message,
+              status: err.status || "",
+            });
+          });
+      }
+
+      if (videoEl) {
+        wireMobilePlayerGestures();
+        videoEl.addEventListener("loadedmetadata", function () {
+          applyResumePoint();
+          showPlayer();
+          postStreamLoaded();
+          startProgressTimer();
+        });
+        videoEl.addEventListener("pause", function () {
+          emitProgress(false);
+          releasePlaybackWakeLock();
+          setBuffering(false);
+        });
+        videoEl.addEventListener("play", function () {
+          resumeStarted = false;
+          requestPlaybackWakeLock();
+        });
+        videoEl.addEventListener("waiting", function () {
+          setBuffering(true);
+        });
+        videoEl.addEventListener("stalled", function () {
+          setBuffering(true);
+        });
+        videoEl.addEventListener("seeking", function () {
+          setBuffering(true);
+        });
+        videoEl.addEventListener("playing", function () {
+          setBuffering(false);
+        });
+        videoEl.addEventListener("canplay", function () {
+          setBuffering(false);
+        });
+        videoEl.addEventListener("canplaythrough", function () {
+          setBuffering(false);
+        });
+        videoEl.addEventListener("seeked", function () {
+          setBuffering(false);
+          if (Date.now() < suppressProgressUntil) return;
+          emitProgress(false);
+        });
+        videoEl.addEventListener("ended", function () {
+          emitProgress(true);
+          releasePlaybackWakeLock();
+          setBuffering(false);
+        });
+        videoEl.addEventListener("error", function () {
+          if (hlsRecovering || hlsRecoveryTimer) return;
+          setBuffering(false);
+          var mediaError = videoEl.error;
+          showPlayerError({
+            stage: "playback",
+            message: "Video playback error",
+            mediaErrorCode: (mediaError && mediaError.code) || "",
+            streamType: currentStreamType,
+          });
+        });
+      }
+
+      window.addEventListener("pagehide", function () {
+        updatePlaybackCheckpoint(currentPlaybackSeconds());
+        emitCheckpointProgress();
+        releasePlaybackWakeLock();
       });
-    }
 
-    function inferStreamType(stream) {
-      if (stream && (stream.type === 'hls' || stream.type === 'file')) return stream.type;
-      var url = String((stream && stream.url) || '');
-      if (/\.m3u8(?:\?|#|$)/i.test(url)) return 'hls';
-      return url ? 'file' : '';
-    }
+      document.addEventListener("visibilitychange", syncPlaybackWakeLock);
 
-    function play(stream) {
-      var type = inferStreamType(stream);
-      if (!stream || !stream.url) {
-        showErr('No stream in response');
-      } else if (type === 'hls') {
-        attachHlsSource(stream.url);
-      } else if (type === 'file') {
-        attachDirectSource(filePlaybackUrl(stream), stream.variants);
-      } else {
-        showErr('Unsupported stream type');
+      function adjustCaptionFontSize(deltaRem) {
+        var captions = document.querySelector("#player .plyr__captions");
+        if (!captions) return;
+        var currentSize = parseFloat(window.getComputedStyle(captions).fontSize);
+        if (!Number.isFinite(currentSize)) return;
+        var rem = Math.min(4, Math.max(0.25, currentSize / 16 + deltaRem));
+        captions.style.fontSize = rem + "rem";
+        safeWrite(captionFontKey(), { rem: rem, updatedAt: Date.now() });
       }
-    }
-  </script>
-</body>
 
+      document.addEventListener("keydown", function (event) {
+        if (event.key === "=" || event.key === "+") {
+          adjustCaptionFontSize(0.25);
+        }
+        if (event.key === "-") {
+          adjustCaptionFontSize(-0.25);
+        }
+      });
+
+      function inferStreamType(stream) {
+        if (stream && (stream.type === "hls" || stream.type === "file"))
+          return stream.type;
+        var url = String((stream && stream.url) || "");
+        if (/\.m3u8(?:\?|#|$)/i.test(url)) return "hls";
+        return url ? "file" : "";
+      }
+
+      function play(stream) {
+        var type = inferStreamType(stream);
+        if (!stream || !stream.url) {
+          showPlayerError({
+            kind: "no-stream",
+            stage: "resolve",
+            message: "No stream in response",
+          });
+        } else if (type === "hls") {
+          attachHlsSource(stream.url);
+        } else if (type === "file") {
+          checkFileProxy()
+            .then(function () {
+              attachDirectSource(filePlaybackUrl(stream), stream.variants);
+            })
+            .catch(function (err) {
+              showPlayerError({
+                stage: "file-proxy",
+                message:
+                  err.message || "Server down or direct file proxy unavailable",
+                streamType: "file",
+              });
+            });
+        } else {
+          showPlayerError({
+            kind: "no-stream",
+            stage: "resolve",
+            message: "Unsupported stream type",
+          });
+        }
+      }
+    </script>
+  </body>
 </html>

@@ -55,55 +55,6 @@ function absoluteUrl(value, base) {
   return new URL(value, base).href;
 }
 
-function normalizeSubtitleTrack(track, baseUrl) {
-  if (!track || typeof track !== "object") return null;
-  const rawUrl = track.url || track.file || track.src || track.link;
-  if (!rawUrl) return null;
-  const language =
-    track.lang || track.language || track.srclang || track.code || "Unknown";
-  const label = track.label || track.name || track.title || language;
-  return {
-    url: absoluteUrl(rawUrl, baseUrl || rawUrl),
-    language: String(language),
-    label: String(label),
-  };
-}
-
-function collectSubtitleTracks(value, baseUrl, out, seen) {
-  if (!value) return;
-  if (Array.isArray(value)) {
-    value.forEach((item) => {
-      const normalized = normalizeSubtitleTrack(item, baseUrl);
-      if (normalized && !seen.has(normalized.url)) {
-        seen.add(normalized.url);
-        out.push(normalized);
-      }
-      collectSubtitleTracks(item, baseUrl, out, seen);
-    });
-    return;
-  }
-  if (typeof value !== "object") return;
-
-  const direct = normalizeSubtitleTrack(value, baseUrl);
-  if (direct && !seen.has(direct.url)) {
-    seen.add(direct.url);
-    out.push(direct);
-  }
-
-  Object.keys(value).forEach((key) => {
-    if (/subtitle|caption|track/i.test(key)) {
-      collectSubtitleTracks(value[key], baseUrl, out, seen);
-    }
-  });
-}
-
-function extractSubtitleTracks(data, playlistUrl) {
-  const tracks = [];
-  const seen = new Set();
-  collectSubtitleTracks(data, playlistUrl, tracks, seen);
-  return tracks;
-}
-
 async function fetchTmdbMeta(id, season, episode) {
   const type = season ? "tv" : "movie";
   const url = `https://api.themoviedb.org/3/${type}/${id}?api_key=${TMDB_KEY}`;
@@ -350,10 +301,7 @@ async function getStreamData(id, season, episode) {
   const playback = normalizePlaybackStream(stream);
   if (!playback || !playback.url) throw new Error("No playable stream in response");
 
-  const subtitles =
-    typeof collectSubtitleTracks === "function"
-      ? collectSubtitleTracks(data)
-      : [];
+  const subtitles = collectSubtitleTracks(data);
   const meta = await fetchTmdbMeta(id, season, episode).catch(() => null);
 
   return {
@@ -906,6 +854,11 @@ function normalizeLanguage(value) {
     chinese: "zh",
     zho: "zh",
     chi: "zh",
+    cat: "ca",
+    nob: "no",
+    heb: "he",
+    glg: "gl",
+    baq: "eu",
     zul: "zu",
     zulu: "zu",
   };
@@ -934,6 +887,120 @@ function normalizeLanguage(value) {
   return "und";
 }
 
+const LANGUAGE_LABELS = {
+  en: "English",
+  cs: "Czech",
+  ar: "Arabic",
+  ca: "Catalan",
+  da: "Danish",
+  de: "German",
+  el: "Greek",
+  es: "Spanish",
+  eu: "Basque",
+  fi: "Finnish",
+  fr: "French",
+  gl: "Galician",
+  he: "Hebrew",
+  hr: "Croatian",
+  hu: "Hungarian",
+  id: "Indonesian",
+  it: "Italian",
+  ja: "Japanese",
+  ko: "Korean",
+  ms: "Malay",
+  nl: "Dutch",
+  no: "Norwegian",
+  pl: "Polish",
+  pt: "Portuguese",
+  ro: "Romanian",
+  ru: "Russian",
+  sv: "Swedish",
+  th: "Thai",
+  tr: "Turkish",
+  uk: "Ukrainian",
+  vi: "Vietnamese",
+  zh: "Chinese",
+};
+
+function languageLabelFromCode(code) {
+  const normalized = String(code || "")
+    .trim()
+    .toLowerCase()
+    .split("-")[0];
+  return LANGUAGE_LABELS[normalized] || normalized.toUpperCase();
+}
+
+function subtitleFilenameMeta(rawUrl) {
+  try {
+    const base = new URL(rawUrl).pathname.split("/").pop() || "";
+    const numbered = base.match(/^([a-z]{2,3})-(\d+)\.(vtt|srt|webvtt)$/i);
+    if (numbered) {
+      return {
+        token: numbered[1].toLowerCase(),
+        variant: numbered[2],
+      };
+    }
+    const simple = base.match(/^([a-z]{2,3})\.(vtt|srt|webvtt)$/i);
+    if (simple) {
+      return { token: simple[1].toLowerCase(), variant: null };
+    }
+  } catch (_) {}
+  return null;
+}
+
+function uniqueSrclang(baseLang, variant, used) {
+  let candidate = variant ? `${baseLang}-${variant}` : baseLang;
+  let suffix = 2;
+  while (used.has(candidate)) {
+    candidate = variant
+      ? `${baseLang}-${variant}-${suffix}`
+      : `${baseLang}-${suffix}`;
+    suffix += 1;
+  }
+  used.add(candidate);
+  return candidate;
+}
+
+function buildSubtitleLabel(baseLang, rawUrl, duplicateIndex, hasSiblings) {
+  const display = languageLabelFromCode(baseLang);
+  const meta = subtitleFilenameMeta(rawUrl);
+  if (hasSiblings && meta?.variant) {
+    return `${display} ${meta.variant}`;
+  }
+  if (hasSiblings) {
+    return `${display} ${duplicateIndex + 1}`;
+  }
+  return display;
+}
+
+function finalizeSubtitleTracks(tracks) {
+  const usedSrclangs = new Set();
+  const langTotals = {};
+  tracks.forEach((track) => {
+    langTotals[track.srclang] = (langTotals[track.srclang] || 0) + 1;
+  });
+  const langSeen = {};
+
+  return tracks.map((track) => {
+    const baseLang = track.srclang;
+    const duplicateIndex = langSeen[baseLang] || 0;
+    langSeen[baseLang] = duplicateIndex + 1;
+    const hasSiblings = langTotals[baseLang] > 1;
+    const meta = subtitleFilenameMeta(track.rawUrl);
+    const variant = meta?.variant || null;
+    return {
+      ...track,
+      label: buildSubtitleLabel(
+        baseLang,
+        track.rawUrl,
+        duplicateIndex,
+        hasSiblings,
+      ),
+      srclang: uniqueSrclang(baseLang, variant, usedSrclangs),
+    };
+  });
+}
+
 function normalizeSubtitleTrack(value, index) {
   const track = typeof value === "string" ? { url: value } : value;
   if (!track || typeof track !== "object") return null;
@@ -942,20 +1009,15 @@ function normalizeSubtitleTrack(value, index) {
   const rawUrl = rawTrackUrl(track);
   if (!rawUrl) return null;
 
+  const filenameMeta = subtitleFilenameMeta(rawUrl);
   const language = normalizeLanguage(
     track.srclang ||
       track.lang ||
       track.languageCode ||
       track.language ||
-      track.code,
+      track.code ||
+      filenameMeta?.token,
   );
-  const label =
-    track.label ||
-    track.name ||
-    track.title ||
-    track.language ||
-    track.lang ||
-    `Subtitle ${index + 1}`;
   const kind = ["captions", "subtitles"].includes(track.kind)
     ? track.kind
     : "subtitles";
@@ -969,9 +1031,10 @@ function normalizeSubtitleTrack(value, index) {
 
   return {
     kind,
-    label: String(label),
+    label: `Subtitle ${index + 1}`,
     srclang: language,
     src,
+    rawUrl,
   };
 }
 
@@ -1008,14 +1071,16 @@ function collectSubtitleTracks(data) {
   ];
 
   const seen = new Set();
-  return candidates
-    .flatMap(trackFieldsFrom)
-    .map(normalizeSubtitleTrack)
-    .filter((track) => {
-      if (!track || seen.has(track.src)) return false;
-      seen.add(track.src);
-      return true;
-    });
+  return finalizeSubtitleTracks(
+    candidates
+      .flatMap(trackFieldsFrom)
+      .map(normalizeSubtitleTrack)
+      .filter((track) => {
+        if (!track || seen.has(track.src)) return false;
+        seen.add(track.src);
+        return true;
+      }),
+  );
 }
 
 function collectPreviewThumbnails(data, baseUrl) {

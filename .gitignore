@@ -8,3 +8,4 @@ downloads/
 # Local Netlify folder
 .netlify
 downloads/
+pnpm-lock.yaml

@@ -982,6 +982,7 @@
       var playbackRecovery = null;
       var RECOVERY_STABILIZING_MAX_MS = 8000;
       var RECOVERY_HEALTHY_DEBOUNCE_MS = 400;
+      var RECOVERY_BUFFER_BLOCK_THRESHOLD_SEC = 20;
       var HLS_RECOVERY_BASE_DELAY = 900;
       var HLS_RECOVERY_MAX_DELAY = 30000;
       var HLS_RECOVERY_MAX_ATTEMPTS = 7;
@@ -1311,9 +1312,24 @@
         return minutes + ":" + String(secs).padStart(2, "0");
       }
 
+      function bufferAheadSeconds(video) {
+        if (!video || !video.buffered || !video.buffered.length) return 0;
+        var current = video.currentTime || 0;
+        for (var i = 0; i < video.buffered.length; i++) {
+          if (
+            video.buffered.start(i) <= current &&
+            current <= video.buffered.end(i)
+          ) {
+            return Math.max(0, video.buffered.end(i) - current);
+          }
+        }
+        return 0;
+      }
+
       function createPlaybackRecoveryMachine(api) {
         var STATE = {
           idle: "idle",
+          deferred: "deferred",
           scheduled: "scheduled",
           restoring: "restoring",
           stabilizing: "stabilizing",
@@ -1330,6 +1346,7 @@
           nonFatalCount: 0,
           fragSinceRestore: false,
           healthySince: 0,
+          deferredHealthySince: 0,
           scheduleTimer: null,
           stabilizeTimer: null,
           healthyTimer: null,
@@ -1365,6 +1382,14 @@
         function setState(next) {
           ctx.state = next;
           document.documentElement.setAttribute("data-recovery-state", next);
+        }
+
+        function isBlocking() {
+          return (
+            ctx.state === STATE.scheduled ||
+            ctx.state === STATE.restoring ||
+            ctx.state === STATE.stabilizing
+          );
         }
 
         function isActive() {
@@ -1406,11 +1431,49 @@
         }
 
         function syncOverlay() {
-          if (isActive()) {
+          if (isBlocking()) {
             api.setRecoveryOverlay(true, overlayDetails());
           } else {
             api.setRecoveryOverlay(false);
           }
+        }
+
+        function finishDeferredSuccess() {
+          ctx.attempt = 0;
+          ctx.startedAt = 0;
+          ctx.nonFatalCount = 0;
+          ctx.lastError = null;
+          ctx.deferredHealthySince = 0;
+          setState(STATE.idle);
+          syncOverlay();
+        }
+
+        function enterDeferred(data) {
+          var now = Date.now();
+          if (!ctx.startedAt) ctx.startedAt = now;
+          ctx.lastError = data || ctx.lastError;
+          ctx.lastErrorAt = now;
+          ctx.deferredHealthySince = 0;
+          var video = api.videoEl();
+          if (video) {
+            ctx.wasPlaying =
+              !api.userPlaybackPaused() && !video.paused && !video.ended;
+          }
+          setState(STATE.deferred);
+          syncOverlay();
+          console.warn("[movie-scraper:hls-recovery]", {
+            mode: "deferred",
+            bufferAhead: api.bufferAheadSeconds(),
+            threshold: api.bufferBlockThreshold,
+            type: (data && data.type) || "",
+            details: (data && data.details) || "",
+          });
+        }
+
+        function shouldDeferRecovery(data) {
+          if (!data || data.fatal) return false;
+          if (ctx.state !== STATE.idle) return false;
+          return api.bufferAheadSeconds() >= api.bufferBlockThreshold;
         }
 
         function recoveryDelay(attempt) {
@@ -1571,6 +1634,9 @@
           if (ctx.state === STATE.idle || ctx.state === STATE.failed) {
             api.updatePlaybackCheckpoint(api.currentPlaybackSeconds());
             pauseIfNeeded();
+          } else if (ctx.state === STATE.deferred) {
+            api.updatePlaybackCheckpoint(api.currentPlaybackSeconds());
+            pauseIfNeeded();
           }
 
           clearAllTimers();
@@ -1608,20 +1674,55 @@
                 ctx.lastError = data;
                 return;
               }
+              if (ctx.state === STATE.deferred) {
+                ctx.lastError = data;
+                ctx.lastErrorAt = Date.now();
+                return;
+              }
+              if (shouldDeferRecovery(data)) {
+                enterDeferred(data);
+                return;
+              }
               scheduleRecovery(data);
               break;
             }
             case "MANIFEST_PARSED":
-              if (isActive()) enterStabilizing();
+              if (isBlocking() || ctx.state === STATE.restoring) {
+                enterStabilizing();
+              }
               break;
             case "FRAG_LOADED":
             case "LEVEL_LOADED":
+              if (ctx.state === STATE.deferred) {
+                if (!ctx.deferredHealthySince) {
+                  ctx.deferredHealthySince = Date.now();
+                } else if (
+                  Date.now() - ctx.deferredHealthySince >=
+                  api.deferredHealthyMs
+                ) {
+                  finishDeferredSuccess();
+                }
+                break;
+              }
               if (
                 ctx.state === STATE.restoring ||
                 ctx.state === STATE.stabilizing
               ) {
                 ctx.fragSinceRestore = true;
                 scheduleHealthyCheck();
+              }
+              break;
+            case "WAITING":
+              if (ctx.state === STATE.deferred) {
+                scheduleRecovery(ctx.lastError || { fatal: false });
+              }
+              break;
+            case "TIMEUPDATE":
+              if (
+                ctx.state === STATE.deferred &&
+                api.bufferAheadSeconds() < api.bufferBlockThreshold
+              ) {
+                scheduleRecovery(ctx.lastError || { fatal: false });
               }
               break;
             case "PLAYING":
@@ -1640,6 +1741,7 @@
             return ctx.state;
           },
           isActive: isActive,
+          isBlocking: isBlocking,
           dispatch: dispatch,
           reset: abort,
           abort: abort,
@@ -1657,6 +1759,11 @@
           nonFatalThreshold: HLS_NON_FATAL_RETRY_THRESHOLD,
           stabilizingMaxMs: RECOVERY_STABILIZING_MAX_MS,
           healthyDebounceMs: RECOVERY_HEALTHY_DEBOUNCE_MS,
+          deferredHealthyMs: 1500,
+          bufferBlockThreshold: RECOVERY_BUFFER_BLOCK_THRESHOLD_SEC,
+          bufferAheadSeconds: function () {
+            return bufferAheadSeconds(videoEl);
+          },
           videoEl: function () {
             return videoEl;
           },
@@ -1699,7 +1806,7 @@
       }
 
       function isStreamRecovering() {
-        return playbackRecovery ? playbackRecovery.isActive() : false;
+        return playbackRecovery ? playbackRecovery.isBlocking() : false;
       }
 
       function dispatchRecoveryPlaybackEvent(event) {
@@ -3467,6 +3574,7 @@
         });
         videoEl.addEventListener("waiting", function () {
           setBuffering(true);
+          dispatchRecoveryPlaybackEvent("WAITING");
         });
         videoEl.addEventListener("stalled", function () {
           setBuffering(true);
@@ -3488,6 +3596,7 @@
         });
         videoEl.addEventListener("timeupdate", function () {
           updateCreditsActionsVisibility();
+          dispatchRecoveryPlaybackEvent("TIMEUPDATE");
         });
         videoEl.addEventListener("seeked", function () {
           setBuffering(false);

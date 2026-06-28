@@ -23,7 +23,6 @@ const MAX_SKIPPED_SEGMENTS = Number(
   process.env.DOWNLOAD_MAX_SKIPPED_SEGMENTS || 3,
 );
 const MAX_ACTIVE_DOWNLOADS = Number(process.env.DOWNLOAD_MAX_ACTIVE_JOBS || 4);
-const FILE_RANGE_CHUNK_SIZE = 8 * 1024 * 1024;
 const FAILURE_RATE_WINDOW = Number(
   process.env.DOWNLOAD_FAILURE_RATE_WINDOW || 20,
 );
@@ -618,159 +617,6 @@ function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function normalizedRangeHeader(rangeHeader, shouldClamp) {
-  if (!rangeHeader || !shouldClamp) return rangeHeader;
-  const match = String(rangeHeader).match(/^bytes=(\d+)-(\d*)$/i);
-  if (!match) return rangeHeader;
-
-  const start = Number(match[1]);
-  if (!Number.isSafeInteger(start) || start < 0) return rangeHeader;
-
-  const requestedEnd = match[2]
-    ? Number(match[2])
-    : start + FILE_RANGE_CHUNK_SIZE - 1;
-  if (!Number.isSafeInteger(requestedEnd) || requestedEnd < start) {
-    return rangeHeader;
-  }
-
-  const end = Math.min(requestedEnd, start + FILE_RANGE_CHUNK_SIZE - 1);
-  return `bytes=${start}-${end}`;
-}
-
-function parseByteRange(rangeHeader) {
-  const match = String(rangeHeader).match(/^bytes=(\d+)-(\d+)$/i);
-  if (!match) return null;
-  const start = Number(match[1]);
-  const end = Number(match[2]);
-  if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || end < start) {
-    return null;
-  }
-  return { start, end };
-}
-
-function rangeBodyLength(rangeHeader) {
-  const parsed = parseByteRange(rangeHeader);
-  return parsed ? parsed.end - parsed.start + 1 : FILE_RANGE_CHUNK_SIZE;
-}
-
-function pipeUpstreamWithByteLimit(upstream, dest, maxBytes) {
-  let sent = 0;
-  const finish = () => {
-    if (!dest.writableEnded) dest.end();
-  };
-  upstream.on("data", (chunk) => {
-    if (sent >= maxBytes) {
-      upstream.destroy();
-      return;
-    }
-    const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-    const take = Math.min(buf.length, maxBytes - sent);
-    if (take > 0) {
-      dest.write(take === buf.length ? buf : buf.subarray(0, take));
-      sent += take;
-    }
-    if (sent >= maxBytes) {
-      upstream.destroy();
-      finish();
-    }
-  });
-  upstream.on("end", finish);
-  upstream.on("error", (err) => {
-    if (!dest.writableEnded) dest.destroy(err);
-  });
-}
-
-function upstreamFileRequestHeaders(rawUrl, range) {
-  const headers = {
-    Referer: REFERER,
-    Origin: ORIGIN,
-    "User-Agent": UA,
-    Accept: "*/*",
-    "Accept-Encoding": "identity",
-  };
-  try {
-    const embedded = new URL(rawUrl).searchParams.get("headers");
-    if (embedded) {
-      const parsed = JSON.parse(embedded);
-      if (parsed.referer) headers.Referer = parsed.referer;
-      if (parsed.origin) headers.Origin = parsed.origin;
-    }
-  } catch (_) {}
-  if (range) headers.Range = range;
-  return headers;
-}
-
-function buildFileProxyResponse(upstream, requestedRange) {
-  const parsed = parseByteRange(requestedRange);
-  const headers = fileProxyHeaders(upstream.headers);
-  if (!parsed) {
-    return { statusCode: upstream.statusCode || 200, headers };
-  }
-  const chunkLength = rangeBodyLength(requestedRange);
-  const total = upstream.headers["content-length"];
-  const upstreamStatus = upstream.statusCode || 200;
-  if (upstreamStatus === 206 && headers["content-range"]) {
-    headers["content-length"] = String(chunkLength);
-    return { statusCode: 206, headers };
-  }
-  headers["content-range"] = total
-    ? `bytes ${parsed.start}-${parsed.end}/${total}`
-    : `bytes ${parsed.start}-${parsed.end}/*`;
-  headers["content-length"] = String(chunkLength);
-  return { statusCode: 206, headers };
-}
-
-function fileProxyHeaders(upstreamHeaders) {
-  const headers = {
-    "Content-Type": upstreamHeaders["content-type"] || "application/octet-stream",
-    "Accept-Ranges": upstreamHeaders["accept-ranges"] || "bytes",
-  };
-  [
-    "content-length",
-    "content-range",
-    "cache-control",
-    "etag",
-    "last-modified",
-  ].forEach((name) => {
-    if (upstreamHeaders[name]) headers[name] = upstreamHeaders[name];
-  });
-  return headers;
-}
-
-function fetchFileUpstream(url, range, redirects = 0) {
-  return new Promise((resolve, reject) => {
-    if (redirects > 5) return reject(new Error("too many redirects"));
-    const isHttps = url.startsWith("https");
-    const headers = upstreamFileRequestHeaders(url, range);
-    const request = (isHttps ? https : http).get(
-      url,
-      {
-        agent: isHttps ? HTTPS_AGENT : HTTP_AGENT,
-        headers,
-      },
-      (res) => {
-        if (
-          res.statusCode >= 300 &&
-          res.statusCode < 400 &&
-          res.headers.location
-        ) {
-          const location = res.headers.location.startsWith("http")
-            ? res.headers.location
-            : new URL(res.headers.location, url).href;
-          res.resume();
-          resolve(fetchFileUpstream(location, range, redirects + 1));
-          return;
-        }
-        resolve(res);
-      },
-    );
-    request.setTimeout(30000, () =>
-      request.destroy(new Error("request timed out")),
-    );
-    request.on("error", reject);
-  });
-}
-
 function fetchUpstream(url, redirects = 0) {
   return new Promise((resolve, reject) => {
     if (redirects > 5) return reject(new Error("too many redirects"));
@@ -821,7 +667,7 @@ async function fetchUpstreamWithRetry(url, attempt = 0) {
   }
 }
 
-function readUpstreamBody(upstream) {
+function readUpstreamBody(upstream, proxyLabel) {
   return new Promise((resolve, reject) => {
     const chunks = [];
     upstream.on("data", (chunk) => {
@@ -830,8 +676,35 @@ function readUpstreamBody(upstream) {
     upstream.on("end", () => {
       resolve(Buffer.concat(chunks));
     });
-    upstream.on("error", reject);
+    upstream.on("error", (err) => {
+      if (proxyLabel) {
+        logProxy("segment-error", `${proxyLabel} :: ${err.message}`);
+      }
+      reject(err);
+    });
   });
+}
+
+async function fetchSegmentBufferWithRetry(url, proxyLabel, attempt = 0) {
+  try {
+    const upstream = await fetchUpstreamWithRetry(url);
+    const body = await readUpstreamBody(upstream, proxyLabel);
+    return {
+      statusCode: upstream.statusCode || 200,
+      headers: upstream.headers,
+      body,
+    };
+  } catch (err) {
+    if (attempt >= 2 || !isTransientProxyError(err)) {
+      throw err;
+    }
+    logProxy(
+      "segment-retry",
+      `${proxyLabel} :: ${err.message} :: retry ${attempt + 1}`,
+    );
+    await wait(750 * Math.pow(2, attempt));
+    return fetchSegmentBufferWithRetry(url, proxyLabel, attempt + 1);
+  }
 }
 
 function rewriteDownloadPlaylist(body, url) {
@@ -2154,34 +2027,29 @@ async function handleOptions(reqUrl, res) {
   }
 }
 
-async function handleFileProxy(req, reqUrl, res) {
-  const rawUrl = reqUrl.searchParams.get("url");
-  if (!rawUrl) {
-    sendJson(res, 400, { error: "missing url" });
-    return;
-  }
-  try {
-    const clientRange = req.headers.range || req.headers.Range;
-    const range =
-      normalizedRangeHeader(clientRange, true) ||
-      `bytes=0-${FILE_RANGE_CHUNK_SIZE - 1}`;
-    const upstream = await fetchFileUpstream(rawUrl, range);
-    const response = buildFileProxyResponse(upstream, range);
-    res.writeHead(response.statusCode, corsHeaders(response.headers));
-    req.on("close", () => upstream.destroy());
-    pipeUpstreamWithByteLimit(upstream, res, rangeBodyLength(range));
-  } catch (err) {
-    sendJson(res, 502, { error: err.message });
-  }
-}
-
 async function handleDownloadProxy(reqUrl, res) {
   const rawUrl = reqUrl.searchParams.get("url");
   if (!rawUrl) {
     sendJson(res, 400, { error: "missing url" });
     return;
   }
+  const isSegment = reqUrl.pathname === "/proxy/segment";
+  const proxyLabel = summarizeProxyUrl(rawUrl);
   try {
+    if (isSegment) {
+      const segment = await fetchSegmentBufferWithRetry(rawUrl, proxyLabel);
+      const ct = (segment.headers["content-type"] || "").toLowerCase();
+      res.writeHead(
+        segment.statusCode,
+        corsHeaders({
+          "Content-Type": ct || "application/octet-stream",
+          "Content-Length": segment.body.length,
+        }),
+      );
+      res.end(segment.body);
+      return;
+    }
+
     const upstream = await fetchUpstreamWithRetry(rawUrl);
     const ct = (upstream.headers["content-type"] || "").toLowerCase();
     const isM3u8 =
@@ -2214,8 +2082,8 @@ async function handleDownloadProxy(reqUrl, res) {
     );
     upstream.pipe(res);
   } catch (err) {
-    if (reqUrl.pathname === "/proxy/segment") {
-      logProxy("segment-failed", `${summarizeProxyUrl(rawUrl)} :: ${err.message}`);
+    if (isSegment) {
+      logProxy("segment-failed", `${proxyLabel} :: ${err.message}`);
     }
     sendJson(res, 502, { error: err.message });
   }
@@ -2323,11 +2191,6 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === "GET" && reqUrl.pathname === "/options") {
     await handleOptions(reqUrl, res);
-    return;
-  }
-
-  if (req.method === "GET" && reqUrl.pathname === "/proxy/file") {
-    await handleFileProxy(req, reqUrl, res);
     return;
   }
 

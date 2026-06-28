@@ -2323,12 +2323,14 @@
         if (!payload) return false;
         if (!options.force && Date.now() < suppressProgressUntil) return false;
         if (payload.ended) return true;
+        if (options.bypassRegressive) return true;
         return !isRegressiveProgress(payload);
       }
 
-      function saveProgress(payload) {
+      function saveProgress(payload, options) {
+        options = options || {};
         if (!id) return;
-        if (isRegressiveProgress(payload)) return;
+        if (!options.bypassRegressive && isRegressiveProgress(payload)) return;
         if (shouldPersistProgress(payload)) {
           safeWrite(progressKey(), {
             currentTime: payload.currentTime,
@@ -2342,34 +2344,34 @@
       }
 
       function emitProgress(endedOverride, options) {
+        options = options || {};
         if (!id || !videoEl) return;
         var payload = progressPayload(endedOverride);
+        if (options.eventReason) payload.eventReason = options.eventReason;
+        if (options.bypassRegressive && isRegressiveProgress(payload)) {
+          playbackCheckpoint = payload.currentTime;
+        }
         updatePlaybackCheckpoint(payload.currentTime);
         if (!shouldEmitProgress(payload, options)) return;
-        saveProgress(payload);
+        saveProgress(payload, options);
         postPlayerEvent(payload.ended ? "ended" : "progress", payload);
       }
 
       function emitCheckpointProgress() {
-        if (!id || !videoEl || playbackCheckpoint <= 0) return;
-        var payload = progressPayload(false);
-        payload.currentTime = Math.max(payload.currentTime, playbackCheckpoint);
-        payload.percent = payload.duration
-          ? Number(
-              Math.min(
-                100,
-                (payload.currentTime / payload.duration) * 100,
-              ).toFixed(2),
-            )
-          : payload.percent;
-        saveProgress(payload);
-        postPlayerEvent("progress", payload);
+        if (!id || !videoEl) return;
+        emitProgress(false, {
+          force: true,
+          bypassRegressive: true,
+          eventReason: "pagehide",
+        });
       }
 
       function startProgressTimer() {
         clearInterval(progressTimer);
         progressTimer = setInterval(function () {
-          if (videoEl && !videoEl.paused && !videoEl.ended) emitProgress(false);
+          if (videoEl && !videoEl.paused && !videoEl.ended) {
+            emitProgress(false, { eventReason: "interval" });
+          }
         }, 15000);
       }
 
@@ -3565,12 +3567,21 @@
           if (!suppressRecoveryPause) {
             userPlaybackPaused = true;
           }
-          emitProgress(false, { force: true });
+          emitProgress(false, {
+            force: true,
+            bypassRegressive: true,
+            eventReason: "pause",
+          });
           releasePlaybackWakeLock();
           setBuffering(false);
         });
         videoEl.addEventListener("play", function () {
           requestPlaybackWakeLock();
+          emitProgress(false, {
+            force: true,
+            bypassRegressive: true,
+            eventReason: "manual",
+          });
         });
         videoEl.addEventListener("waiting", function () {
           setBuffering(true);
@@ -3602,11 +3613,14 @@
           setBuffering(false);
           updateCreditsActionsVisibility();
           dispatchRecoveryPlaybackEvent("SEEKED");
-          if (Date.now() < suppressProgressUntil) return;
-          emitProgress(false);
+          emitProgress(false, {
+            force: true,
+            bypassRegressive: true,
+            eventReason: "seeked",
+          });
         });
         videoEl.addEventListener("ended", function () {
-          emitProgress(true);
+          emitProgress(true, { eventReason: "ended", bypassRegressive: true });
           releasePlaybackWakeLock();
           setBuffering(false);
         });

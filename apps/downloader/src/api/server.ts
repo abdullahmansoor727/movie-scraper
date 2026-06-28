@@ -13,8 +13,13 @@ import { createLogger } from "../infra/logging/logger.ts";
 import { database } from "../infra/db/database.ts";
 import { resolveVariants } from "../integrations/vidlink/client.ts";
 import {
-  fetchSegmentBody,
+  fetchSegmentUpstream,
   fetchUpstream,
+  FILE_RANGE_CHUNK_SIZE,
+  normalizedRangeHeader,
+  parseByteRange,
+  pipeUpstreamWithByteLimit,
+  rangeBodyLength,
   readUpstreamBody,
 } from "../infra/http/fetch.ts";
 import { fileSize, getDiskSpace } from "../infra/files/disk.ts";
@@ -85,9 +90,60 @@ function fileProxyHeaders(
     "last-modified",
   ].forEach((name) => {
     const value = upstreamHeaders[name];
-    if (typeof value === "string") headers[name] = value;
+    if (typeof value === "string") {
+      headers[name] = value;
+    }
   });
   return headers;
+}
+
+function upstreamFileRequestHeaders(
+  rawUrl: string,
+  range?: string,
+): Record<string, string> {
+  const headers: Record<string, string> = {
+    Accept: "*/*",
+    "Accept-Encoding": "identity",
+    Referer: config.referer,
+    "User-Agent": config.userAgent,
+  };
+  try {
+    const embedded = new URL(rawUrl).searchParams.get("headers");
+    if (embedded) {
+      const parsed = JSON.parse(embedded) as Record<string, string>;
+      if (parsed.referer) headers.Referer = parsed.referer;
+      if (parsed.origin) headers.Origin = parsed.origin;
+    }
+  } catch {
+    // ignore malformed embedded header payloads
+  }
+  if (range) headers.Range = range;
+  return headers;
+}
+
+function buildFileProxyResponse(
+  upstream: http.IncomingMessage,
+  requestedRange: string,
+): { statusCode: number; headers: Record<string, string> } {
+  const parsed = parseByteRange(requestedRange);
+  const headers = fileProxyHeaders(upstream.headers);
+  if (!parsed) {
+    return { statusCode: upstream.statusCode || 200, headers };
+  }
+
+  const chunkLength = rangeBodyLength(requestedRange);
+  const total = upstream.headers["content-length"];
+  const upstreamStatus = upstream.statusCode || 200;
+  if (upstreamStatus === 206 && headers["content-range"]) {
+    headers["content-length"] = String(chunkLength);
+    return { statusCode: 206, headers };
+  }
+
+  headers["content-range"] = total
+    ? `bytes ${parsed.start}-${parsed.end}/${total}`
+    : `bytes ${parsed.start}-${parsed.end}/*`;
+  headers["content-length"] = String(chunkLength);
+  return { statusCode: 206, headers };
 }
 
 function fetchRawFileUpstream(
@@ -102,13 +158,7 @@ function fetchRawFileUpstream(
     }
     const requestUrl = new URL(rawUrl);
     const isHttps = requestUrl.protocol === "https:";
-    const headers: Record<string, string> = {
-      Accept: "*/*",
-      "Accept-Encoding": "identity",
-      Referer: config.referer,
-      "User-Agent": config.userAgent,
-    };
-    if (range) headers.Range = range;
+    const headers = upstreamFileRequestHeaders(rawUrl, range);
 
     const request = (isHttps ? https : http).get(
       requestUrl,
@@ -307,13 +357,16 @@ function registerRoutes(app: FastifyInstance): void {
       const rawUrl = request.query.url;
       if (!rawUrl) return reply.code(400).send({ error: "missing url" });
       try {
-        const segment = await fetchSegmentBody(rawUrl);
-        return reply
-          .header("Content-Type", segment.contentType)
-          .header("Content-Length", segment.body.length)
-          .send(segment.body);
+        const upstream = await fetchSegmentUpstream(rawUrl);
+        reply.hijack();
+        reply.raw.writeHead(
+          upstream.statusCode || 200,
+          fileProxyHeaders(upstream.headers),
+        );
+        request.raw.on("close", () => upstream.destroy());
+        upstream.pipe(reply.raw);
       } catch (err) {
-        return reply.code(502).send(errorPayload(err));
+        if (!reply.sent) return reply.code(502).send(errorPayload(err));
       }
     },
   );
@@ -324,18 +377,23 @@ function registerRoutes(app: FastifyInstance): void {
       const rawUrl = request.query.url;
       if (!rawUrl) return reply.code(400).send({ error: "missing url" });
       try {
-        const range =
+        const clientRange =
           typeof request.headers.range === "string"
             ? request.headers.range
             : undefined;
+        const range =
+          normalizedRangeHeader(clientRange, true) ||
+          `bytes=0-${FILE_RANGE_CHUNK_SIZE - 1}`;
         const upstream = await fetchRawFileUpstream(rawUrl, range);
+        const response = buildFileProxyResponse(upstream, range);
         reply.hijack();
-        reply.raw.writeHead(
-          upstream.statusCode || 200,
-          fileProxyHeaders(upstream.headers),
-        );
+        reply.raw.writeHead(response.statusCode, response.headers);
         request.raw.on("close", () => upstream.destroy());
-        upstream.pipe(reply.raw);
+        pipeUpstreamWithByteLimit(
+          upstream,
+          reply.raw,
+          rangeBodyLength(range),
+        );
       } catch (err) {
         if (!reply.sent) return reply.code(502).send(errorPayload(err));
       }
@@ -526,11 +584,6 @@ function registerRoutes(app: FastifyInstance): void {
       return { job: database.serializeJob(next) };
     },
   );
-
-  app.post("/queue-download", async (request, reply) => {
-    const disk = await getDiskSpace(config.plexWatchDir);
-    console.log("Queue download requested", request.body);
-  });
 }
 
 export function startApiServer(): FastifyInstance {

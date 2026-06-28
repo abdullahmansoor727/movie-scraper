@@ -8,7 +8,7 @@
   functions = "api"
 
 [functions]
-  included_files = ["script.js", "fu.wasm"]
+  included_files = ["script.js", "fu.wasm", "api/lib/core.cjs"]
 
 [[redirects]]
   from = "/api"

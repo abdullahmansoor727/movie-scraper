@@ -4,6 +4,7 @@ const fs = require("fs");
 const path = require("path");
 const https = require("https");
 const http = require("http");
+const { Readable } = require("node:stream");
 
 const REFERER = "https://vidlink.pro/";
 const ORIGIN = "https://vidlink.pro";
@@ -32,10 +33,10 @@ function bootWasm() {
     await sodium.ready;
     globalThis.sodium = sodium;
 
-    eval(fs.readFileSync(path.join(__dirname, "..", "script.js"), "utf8"));
+    eval(fs.readFileSync(path.join(__dirname, "..", "..", "script.js"), "utf8"));
 
     const go = new Dm();
-    const wasmBuf = fs.readFileSync(path.join(__dirname, "..", "fu.wasm"));
+    const wasmBuf = fs.readFileSync(path.join(__dirname, "..", "..", "fu.wasm"));
     const { instance } = await WebAssembly.instantiate(
       wasmBuf,
       go.importObject,
@@ -317,22 +318,6 @@ async function getStreamData(id, season, episode) {
 }
 
 // ── HLS upstream fetcher with redirect support ────────────────────────────────
-function isTransientProxyError(err) {
-  const message = err && err.message ? err.message : "";
-  return !!(
-    err &&
-    (/aborted|timed out|socket hang up|econnreset|epipe|network/i.test(
-      message,
-    ) ||
-      err.code === "ECONNRESET" ||
-      err.code === "EPIPE")
-  );
-}
-
-function wait(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 function fetchUpstream(url, redirects = 0, extraHeaders = {}) {
   return new Promise((resolve, reject) => {
     if (redirects > 5) return reject(new Error("too many redirects"));
@@ -430,18 +415,6 @@ function passthroughProxyHeaders(upstream) {
   return headers;
 }
 
-async function fetchUpstreamWithRetry(url, attempt = 0) {
-  try {
-    return await fetchUpstream(url, 0);
-  } catch (err) {
-    if (attempt >= 2 || !isTransientProxyError(err)) {
-      throw err;
-    }
-    await wait(750 * Math.pow(2, attempt));
-    return fetchUpstreamWithRetry(url, attempt + 1);
-  }
-}
-
 function proxiedPathForUrl(url) {
   const pathname = new URL(url).pathname.toLowerCase();
   if (/\.m3u8?$/.test(pathname)) return "/api/playlist.m3u8";
@@ -450,7 +423,7 @@ function proxiedPathForUrl(url) {
   return "/api/segment.ts";
 }
 
-function toProxiedUrl(value, playlistUrl, origin = "") {
+function toProxiedUrl(value, playlistUrl) {
   if (/^(data|blob):/i.test(value)) return value;
   if (/^[a-z][a-z0-9+.-]*:/i.test(value) && !/^https?:/i.test(value))
     return value;
@@ -464,13 +437,9 @@ function toProxiedUrl(value, playlistUrl, origin = "") {
     encodeURIComponent(absoluteUrl) +
     hash
   );
-  // const absoluteUrl = new URL(value, playlistUrl).href;
-  // const proxiedPath =
-  //   proxiedPathForUrl(absoluteUrl) + '?url=' + encodeURIComponent(absoluteUrl);
-  // return origin ? new URL(proxiedPath, origin).href : proxiedPath;
 }
 
-function rewriteM3u8(body, url, origin = "") {
+function rewriteM3u8(body, url) {
   return body
     .split("\n")
     .map((line) => {
@@ -478,10 +447,10 @@ function rewriteM3u8(body, url, origin = "") {
       if (!t) return line;
       if (t.startsWith("#")) {
         return line.replace(/URI="([^"]+)"/g, function (_, uri) {
-          return 'URI="' + toProxiedUrl(uri, url, origin) + '"';
+          return 'URI="' + toProxiedUrl(uri, url) + '"';
         });
       }
-      return toProxiedUrl(t, url, origin);
+      return toProxiedUrl(t, url);
     })
     .join("\n");
 }
@@ -1133,128 +1102,146 @@ function streamToBuffer(stream) {
   });
 }
 
-function getQuery(event) {
-  if (event.queryStringParameters) {
-    return event.queryStringParameters;
-  }
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "Content-Type, Range",
+  "Access-Control-Allow-Methods": "GET, OPTIONS",
+};
 
-  const rawUrl = event.rawUrl || event.path || "/api";
-  const { searchParams } = new URL(rawUrl, "http://localhost");
-  return Object.fromEntries(searchParams);
+function requestHeaderMap(request) {
+  const headers = {};
+  request.headers.forEach((value, key) => {
+    headers[key.toLowerCase()] = value;
+  });
+  return headers;
 }
 
-async function handler(event) {
-  const headers = {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "Content-Type, Range",
-    "Access-Control-Allow-Methods": "GET, OPTIONS",
-  };
+function bindUpstreamAbort(request, upstream) {
+  if (!request.signal) return;
+  if (request.signal.aborted) {
+    upstream.destroy();
+    return;
+  }
+  request.signal.addEventListener(
+    "abort",
+    () => {
+      upstream.destroy();
+    },
+    { once: true },
+  );
+}
 
-  if (event.httpMethod === "OPTIONS") {
-    return { statusCode: 204, headers, body: "" };
+function streamingProxyHeaders(proxyHeaders) {
+  const headers = { ...proxyHeaders };
+  delete headers["content-length"];
+  delete headers["Content-Length"];
+  delete headers["content-range"];
+  delete headers["Content-Range"];
+  return headers;
+}
+
+function streamProxyResponse(request, upstream, ct, proxyHeaders) {
+  bindUpstreamAbort(request, upstream);
+  return new Response(Readable.toWeb(upstream), {
+    status: upstream.statusCode || 200,
+    headers: {
+      ...CORS_HEADERS,
+      ...streamingProxyHeaders(proxyHeaders),
+      "Content-Type": ct || "application/octet-stream",
+    },
+  });
+}
+
+async function handleProxyRequest(request, url, requestPath, q) {
+  const isPreviewVtt =
+    requestPath.includes("/api/preview.vtt") || q.preview === "1";
+  const upstream = await fetchUpstream(
+    url,
+    0,
+    upstreamRequestHeaders(url, requestHeaderMap(request)),
+  );
+  const ct = (upstream.headers["content-type"] || "").toLowerCase();
+  const proxyHeaders = passthroughProxyHeaders(upstream);
+  const cleanPath = url.split("?")[0];
+  const isM3u8 =
+    ct.includes("mpegurl") ||
+    ct.includes("m3u8") ||
+    /\.m3u8?$/i.test(cleanPath);
+  const isSubtitle =
+    ct.includes("text/vtt") ||
+    ct.includes("webvtt") ||
+    /\.(vtt|webvtt|srt)$/i.test(cleanPath);
+
+  if (isM3u8) {
+    const bodyBuffer = await streamToBuffer(upstream);
+    return new Response(rewriteM3u8(bodyBuffer.toString("utf8"), url), {
+      status: 200,
+      headers: {
+        ...CORS_HEADERS,
+        "Content-Type": "application/vnd.apple.mpegurl",
+      },
+    });
   }
 
-  const q = getQuery(event);
+  if (isSubtitle) {
+    const bodyBuffer = await streamToBuffer(upstream);
+    const isSrt = /\.srt$/i.test(cleanPath) || ct.includes("subrip");
+    const textBody = isSrt
+      ? srtToVtt(bodyBuffer.toString("utf8"))
+      : bodyBuffer.toString("utf8");
+    return new Response(isPreviewVtt ? rewriteVttUrls(textBody, url) : textBody, {
+      status: 200,
+      headers: {
+        ...CORS_HEADERS,
+        "Content-Type": "text/vtt; charset=utf-8",
+      },
+    });
+  }
+
+  return streamProxyResponse(request, upstream, ct, proxyHeaders);
+}
+
+async function handleRequest(request) {
+  if (request.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers: CORS_HEADERS });
+  }
+
+  const requestUrl = new URL(request.url);
+  const q = Object.fromEntries(requestUrl.searchParams);
+  const requestPath = requestUrl.pathname.toLowerCase();
 
   // Proxy mode: /api?url=...
   if (q.url) {
-    const url = q.url;
     try {
-      const requestPath = String(
-        event.path || event.rawUrl || "",
-      ).toLowerCase();
-      const isPreviewVtt =
-        requestPath.includes("/api/preview.vtt") || q.preview === "1";
-      const eventHeaders = event.headers || {};
-      const upstream = await fetchUpstream(url, 0, upstreamRequestHeaders(url, eventHeaders));
-      const ct = (upstream.headers["content-type"] || "").toLowerCase();
-      const proxyHeaders = passthroughProxyHeaders(upstream);
-      const cleanPath = url.split("?")[0];
-      const isM3u8 =
-        ct.includes("mpegurl") ||
-        ct.includes("m3u8") ||
-        /\.m3u8?$/i.test(cleanPath);
-      const isSubtitle =
-        ct.includes("text/vtt") ||
-        ct.includes("webvtt") ||
-        /\.(vtt|webvtt|srt)$/i.test(cleanPath);
-      // const upstream = await fetchUpstreamWithRetry(url);
-      // const ct = (upstream.headers["content-type"] || "").toLowerCase();
-      // const isM3u8 =
-      //   ct.includes("mpegurl") ||
-      //   ct.includes("m3u8") ||
-      //   /\.m3u8?(\?|$)/i.test(url.split("?")[0]);
-      const bodyBuffer = await streamToBuffer(upstream);
-
-      if (isM3u8) {
-        return {
-          statusCode: 200,
-          headers: {
-            ...headers,
-            "Content-Type": "application/vnd.apple.mpegurl",
-          },
-          body: rewriteM3u8(bodyBuffer.toString("utf8"), url),
-        };
-      }
-
-      if (isSubtitle) {
-        const isSrt = /\.srt$/i.test(cleanPath) || ct.includes("subrip");
-        const textBody = isSrt
-          ? srtToVtt(bodyBuffer.toString("utf8"))
-          : bodyBuffer.toString("utf8");
-        return {
-          statusCode: 200,
-          headers: { ...headers, "Content-Type": "text/vtt; charset=utf-8" },
-          body: isPreviewVtt ? rewriteVttUrls(textBody, url) : textBody,
-        };
-      }
-
-      return {
-        statusCode: upstream.statusCode || 200,
-        headers: {
-          ...headers,
-          ...proxyHeaders,
-          "Content-Type": ct || "application/octet-stream",
-        },
-        body: bodyBuffer.toString("base64"),
-        isBase64Encoded: true,
-      };
+      return await handleProxyRequest(request, q.url, requestPath, q);
     } catch (err) {
-      return {
-        statusCode: 502,
-        headers: { ...headers, "Content-Type": "application/json" },
-        body: JSON.stringify({ error: err.message }),
-      };
+      return new Response(JSON.stringify({ error: err.message }), {
+        status: 502,
+        headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+      });
     }
   }
 
   // Stream lookup: /api?id=550  or  /api?id=456&s=1&e=2
   if (!q.id) {
-    return {
-      statusCode: 400,
-      headers: { ...headers, "Content-Type": "application/json" },
-      body: JSON.stringify({ error: "missing id" }),
-    };
+    return new Response(JSON.stringify({ error: "missing id" }), {
+      status: 400,
+      headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+    });
   }
 
   try {
     const stream = await getStreamData(q.id, q.s, q.e);
-    return {
-      statusCode: 200,
-      headers: { ...headers, "Content-Type": "application/json" },
-      // const stream = await getStreamData(q.id, q.s, q.e);
-      // return {
-      //   statusCode: 200,
-      //   headers: { ...headers, "Content-Type": "application/json" },
-      body: JSON.stringify(stream),
-    };
+    return new Response(JSON.stringify(stream), {
+      status: 200,
+      headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+    });
   } catch (err) {
-    return {
-      statusCode: 500,
-      headers: { ...headers, "Content-Type": "application/json" },
-      body: JSON.stringify({ error: err.message }),
-    };
+    return new Response(JSON.stringify({ error: err.message }), {
+      status: 500,
+      headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+    });
   }
 }
 
-exports.handler = handler;
+module.exports = { handleRequest };

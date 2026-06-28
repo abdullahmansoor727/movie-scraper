@@ -1,88 +1,9 @@
 import http from "node:http";
 import https from "node:https";
-import type { Writable } from "node:stream";
 import { config } from "../config/index.ts";
 
 const httpAgent = new http.Agent({ keepAlive: true, maxSockets: 32 });
 const httpsAgent = new https.Agent({ keepAlive: true, maxSockets: 32 });
-
-export const FILE_RANGE_CHUNK_SIZE = 8 * 1024 * 1024;
-
-export function normalizedRangeHeader(
-  rangeHeader: string | undefined,
-  shouldClamp: boolean,
-): string | undefined {
-  if (!rangeHeader) return undefined;
-  if (!shouldClamp) return rangeHeader;
-  const match = String(rangeHeader).match(/^bytes=(\d+)-(\d*)$/i);
-  if (!match) return rangeHeader;
-
-  const start = Number(match[1]);
-  if (!Number.isSafeInteger(start) || start < 0) return rangeHeader;
-
-  const requestedEnd = match[2]
-    ? Number(match[2])
-    : start + FILE_RANGE_CHUNK_SIZE - 1;
-  if (!Number.isSafeInteger(requestedEnd) || requestedEnd < start) {
-    return rangeHeader;
-  }
-
-  const end = Math.min(requestedEnd, start + FILE_RANGE_CHUNK_SIZE - 1);
-  return `bytes=${start}-${end}`;
-}
-
-export function parseByteRange(
-  rangeHeader: string,
-): { start: number; end: number } | null {
-  const match = String(rangeHeader).match(/^bytes=(\d+)-(\d+)$/i);
-  if (!match) return null;
-  const start = Number(match[1]);
-  const end = Number(match[2]);
-  if (
-    !Number.isSafeInteger(start) ||
-    !Number.isSafeInteger(end) ||
-    end < start
-  ) {
-    return null;
-  }
-  return { start, end };
-}
-
-export function rangeBodyLength(rangeHeader: string): number {
-  const parsed = parseByteRange(rangeHeader);
-  return parsed ? parsed.end - parsed.start + 1 : FILE_RANGE_CHUNK_SIZE;
-}
-
-export function pipeUpstreamWithByteLimit(
-  upstream: http.IncomingMessage,
-  dest: Writable,
-  maxBytes: number,
-): void {
-  let sent = 0;
-  const finish = () => {
-    if (!dest.writableEnded) dest.end();
-  };
-  upstream.on("data", (chunk: Buffer | string) => {
-    if (sent >= maxBytes) {
-      upstream.destroy();
-      return;
-    }
-    const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-    const take = Math.min(buf.length, maxBytes - sent);
-    if (take > 0) {
-      dest.write(take === buf.length ? buf : buf.subarray(0, take));
-      sent += take;
-    }
-    if (sent >= maxBytes) {
-      upstream.destroy();
-      finish();
-    }
-  });
-  upstream.on("end", finish);
-  upstream.on("error", (err) => {
-    if (!dest.writableEnded) dest.destroy(err);
-  });
-}
 
 export function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -234,14 +155,21 @@ export async function readUpstreamBody(
   });
 }
 
-export async function fetchSegmentUpstream(
+export async function fetchSegmentBody(
   url: string,
   maxAttempts = 3,
-): Promise<http.IncomingMessage> {
+): Promise<{ body: Buffer; contentType: string }> {
   let attempt = 0;
   while (true) {
     try {
-      return await fetchUpstream(url);
+      const upstream = await fetchUpstream(url);
+      const body = await readUpstreamBody(upstream);
+      return {
+        body,
+        contentType: String(
+          upstream.headers["content-type"] || "application/octet-stream",
+        ),
+      };
     } catch (err) {
       attempt += 1;
       if (attempt >= maxAttempts || !isRetryableError(err)) throw err;
